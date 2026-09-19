@@ -20,23 +20,66 @@
 
     <div class="kundli-hero" id="stats"></div>
 
-    <div id="nwaran-note"></div>
-
     <div class="chart-layout">
-      <div class="card reveal">
-        <div id="chart"></div>
-        <p class="hint" style="text-align:center;margin-top:12px">North Indian style · houses fixed, signs numbered</p>
-      </div>
-
       <div class="stack">
-        <div id="reading"></div>
-        <details class="reading-section">
-          <summary><span class="section-icon">☿</span> Planetary positions</summary>
-          <div class="body"><div class="table-wrap"><table id="planet-table"></table></div></div>
-        </details>
-        <p class="hint">Calculated with the Lahiri ayanamsa and whole-sign houses. <a href="/onboarding?edit">Birth details wrong?</a></p>
+        <div class="card reveal">
+          <div id="chart"></div>
+          <p class="hint" style="text-align:center;margin-top:10px">
+            North Indian · houses fixed, numbers are signs · <strong>tap any house</strong> to read it
+          </p>
+        </div>
+        <div id="nwaran-note"></div>
+      </div>
+      <div class="stack">
+        <div class="card reveal">
+          <h2>The short version</h2>
+          <div id="summary"></div>
+        </div>
       </div>
     </div>
+
+    <!-- ------------------------------------------------ explorer ---- -->
+    <section style="margin-top:34px">
+      <p class="eyebrow">Explore your chart</p>
+      <div class="toolbar" style="justify-content:space-between;align-items:flex-end">
+        <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end">
+          <div>
+            <label style="margin-bottom:5px">System</label>
+            <div class="segmented" id="system" role="group" aria-label="Astrological system">
+              <button type="button" data-value="vedic">Vedic</button>
+              <button type="button" data-value="western">Western</button>
+              <button type="button" data-value="numbers">Numbers</button>
+            </div>
+          </div>
+          <div>
+            <label style="margin-bottom:5px">Lens</label>
+            <div class="segmented" id="lens" role="group" aria-label="What to explore"></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <div>
+            <label style="margin-bottom:5px">Depth</label>
+            <div class="segmented" id="depth" role="group" aria-label="Level of detail">
+              <button type="button" data-value="brief">Brief</button>
+              <button type="button" data-value="full">Full</button>
+              <button type="button" data-value="technical">Technical</button>
+            </div>
+          </div>
+          <div>
+            <label style="margin-bottom:5px">Tone</label>
+            <div class="segmented" id="tone" role="group" aria-label="Tone">
+              <button type="button" data-value="gentle">Gentle</button>
+              <button type="button" data-value="direct">Direct</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="explorer">
+        <nav class="explorer-list" id="picker" aria-label="Select an item"></nav>
+        <div class="card explorer-panel" id="panel" aria-live="polite"></div>
+      </div>
+    </section>
   </main>
 
   <script src="/js/app.js"></script>
@@ -46,60 +89,338 @@
       const me = await Vidhya.init();
       if (!me) return;
       const veil = Vidhya.skyVeil(['Reading your chart…', 'Weighing each placement…', 'Checking your dasha…']);
-      const data = await Vidhya.api('/api/kundli/me');
+
+      const state = { system: 'vedic', lens: 'planets', depth: 'full', tone: 'direct', pick: null, house: null };
+      let data, D, L;
+      const e = Vidhya.escapeHtml;
+      const deg = (d) => `${Math.floor(d)}°${String(Math.floor((d % 1) * 60)).padStart(2, '0')}′`;
+      const ord = (n) => n + (['th','st','nd','rd'][(n % 100 - 20) % 10] || ['th','st','nd','rd'][n % 100] || 'th');
+      const band = (b, s) => `<span class="band band--${b}">${b}${s !== undefined ? ` · ${s}/10` : ''}</span>`;
+
+      async function load() {
+        [data, L] = await Promise.all([
+          Vidhya.api(`/api/kundli/me?tone=${state.tone}`),
+          Vidhya.api('/api/lenses/me'),
+        ]);
+        D = data.detail;
+      }
+      await load();
       const c = data.chart;
 
+      // ---------------------------------------------------------- header
       document.getElementById('title').textContent = data.profile.fullName;
       document.getElementById('born').textContent =
         `Born ${Vidhya.prettyDate(data.profile.birthDate)} at ${data.profile.birthTime} · ${data.place}`;
-
-      const stats = [
-        ['Lagna', c.ascendant.sign, `${Vidhya.degrees(c.ascendant.degree)} · ruled by ${c.ascendant.lord}`],
+      document.getElementById('stats').innerHTML = [
+        ['Lagna', c.ascendant.sign, `${deg(c.ascendant.degree)} · ruled by ${c.ascendant.lord}`],
         ['Rashi (Moon)', c.moonSign, 'the mind and how you feel'],
         ['Nakshatra', c.nakshatra.name, `pada ${c.nakshatra.pada} · lord ${c.nakshatra.lord}`],
-        ['Running dasha', data.dasha.current ? `${data.dasha.current.lord}` : '—',
+        ['Running dasha', data.dasha.current ? data.dasha.current.lord : '—',
           data.dasha.current ? `until ${Vidhya.prettyDate(data.dasha.current.end)}` : ''],
-      ];
-      document.getElementById('stats').innerHTML = stats.map(([label, value, sub]) => `
-        <div class="stat reveal">
-          <span class="label">${label}</span>
-          <span class="value">${Vidhya.escapeHtml(value)}</span>
-          <span class="sub">${Vidhya.escapeHtml(sub)}</span>
-        </div>`).join('');
+      ].map(([l, v, s]) => `<div class="stat reveal"><span class="label">${l}</span><span class="value">${e(v)}</span><span class="sub">${e(s)}</span></div>`).join('');
 
-      // The nwaran syllable is traditionally taken from the Moon's nakshatra pada.
       if (data.nwaranSuggestion) {
         document.getElementById('nwaran-note').innerHTML = `
-          <div class="card card--quiet reveal" style="margin-bottom:22px">
-            <p style="margin:0" class="soft">
-              ${data.profile.nwaranName
-                ? `Your nwaran name <strong>${Vidhya.escapeHtml(data.profile.nwaranName)}</strong> is recorded. By tradition, ${c.nakshatra.name} pada ${c.nakshatra.pada} gives the starting syllable <strong class="chip gold">${data.nwaranSuggestion}</strong>.`
-                : `You haven't added a nwaran name. Your Moon sits in ${c.nakshatra.name} pada ${c.nakshatra.pada}, so tradition gives the starting syllable <strong class="chip gold">${data.nwaranSuggestion}</strong>. <a href="/onboarding?edit">Add your name</a>`}
-            </p>
-          </div>`;
+          <div class="card card--quiet"><p style="margin:0" class="soft">${data.profile.nwaranName
+            ? `Your nwaran name <strong>${e(data.profile.nwaranName)}</strong> is recorded. Tradition gives ${c.nakshatra.name} pada ${c.nakshatra.pada} the syllable <strong class="chip gold">${data.nwaranSuggestion}</strong>.`
+            : `No nwaran name yet. Your Moon is in ${c.nakshatra.name} pada ${c.nakshatra.pada}, so tradition gives the syllable <strong class="chip gold">${data.nwaranSuggestion}</strong>. <a href="/onboarding?edit">Add it</a>`}</p></div>`;
       }
 
-      document.getElementById('chart').innerHTML = VidhyaChart.northIndian(c);
-      document.querySelector('#chart svg').classList.add('chart-draw');
+      function renderSummary() {
+        const a = D.ascendant;
+        const sorted = Object.values(D.strengths).sort((x, y) => y.score - x.score);
+        const n = L.numerology;
+        document.getElementById('summary').innerHTML = `
+          <p class="reading-text" style="font-size:1.05rem">${e(a.text)}</p>
+          <p class="reading-text">${e(a.lordText)}</p>
+          <ul class="fact-list" style="margin:16px 0">
+            <li><span>Strongest graha</span><strong>${sorted[0].planet} · ${sorted[0].score}/10</strong></li>
+            <li><span>Most strained</span><strong>${sorted.at(-1).planet} · ${sorted.at(-1).score}/10</strong></li>
+            <li><span>Driver / Conductor</span><strong>${n.driver.value} ${n.driver.planet} · ${n.conductor.value} ${n.conductor.planet}</strong></li>
+            <li><span>Western big three</span><strong>${L.western.bigThree.sun} ☉ · ${L.western.bigThree.moon} ☾ · ${L.western.bigThree.rising} ↑</strong></li>
+          </ul>
+          ${D.yogas.filter((y) => y.id !== 'strongest').map((y) => `<p class="reading-text"><strong>${e(y.name)}.</strong> ${e(y.text)}</p>`).join('')}
+          <p class="hint">Lahiri ayanamsa, whole-sign houses. <a href="/onboarding?edit">Birth details wrong?</a></p>`;
+      }
 
-      const ICONS = { nature: '☾', career: '☉', wealth: '♃', relationships: '♀', health: '♂', timing: '♄' };
-      document.getElementById('reading').innerHTML = data.reading.map((s, i) => `
-        <details class="reading-section" ${i === 0 ? 'open' : ''}>
-          <summary><span class="section-icon">${ICONS[s.key] || '✶'}</span> ${s.title}</summary>
-          <div class="body">${s.lines.map((l) => `<p>${Vidhya.escapeHtml(l)}</p>`).join('')}</div>
-        </details>`).join('');
+      function renderChart() {
+        document.getElementById('chart').innerHTML =
+          VidhyaChart.northIndian(c, { selected: state.house, strengths: D.strengths });
+        document.querySelectorAll('#chart .cell').forEach((cell) => {
+          const go = () => {
+            state.system = 'vedic'; state.lens = 'houses';
+            state.pick = Number(cell.dataset.house); state.house = state.pick;
+            renderLensBar(); renderPicker(); renderPanel(); renderChart(); sync();
+          };
+          cell.addEventListener('click', go);
+          cell.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); go(); } });
+        });
+      }
 
-      document.getElementById('planet-table').innerHTML = `
-        <thead><tr><th>Planet</th><th>Sign</th><th>Degree</th><th>House</th><th>Nakshatra</th></tr></thead>
-        <tbody>${c.planets.map((p) => `
-          <tr>
-            <td>${p.name}${p.retrograde && !['Rahu', 'Ketu'].includes(p.name) ? ' <span class="muted">℞</span>' : ''}</td>
-            <td>${p.sign}</td><td>${Vidhya.degrees(p.degree)}</td><td>${p.house}</td>
-            <td>${p.nakshatra.name} <span class="muted">${p.nakshatra.pada}</span></td>
-          </tr>`).join('')}</tbody>`;
+      // ---------------------------------------------- lenses per system
+      const LENSES = {
+        vedic: [['planets', 'Grahas'], ['houses', 'Bhavas'], ['areas', 'Life areas'],
+          ['karakas', 'Karakas'], ['patterns', 'Patterns'], ['image', 'Public image'],
+          ['remedies', 'Remedies'], ['timing', 'Timing']],
+        western: [['big3', 'Big three'], ['wplacements', 'Placements'], ['waspects', 'Aspects'], ['balance', 'Balance']],
+        numbers: [['core', 'Driver & Conductor'], ['name', 'Name number'], ['loshu', 'Lo Shu grid']],
+      };
 
+      function renderLensBar() {
+        document.getElementById('lens').innerHTML = LENSES[state.system]
+          .map(([v, label]) => `<button type="button" data-value="${v}">${label}</button>`).join('');
+        if (!LENSES[state.system].some(([v]) => v === state.lens)) state.lens = LENSES[state.system][0][0];
+        document.querySelectorAll('#lens button').forEach((b) => b.addEventListener('click', () => {
+          state.lens = b.dataset.value; state.pick = null; sync(); renderPicker(); renderPanel();
+        }));
+      }
+
+      const LISTS = {
+        planets: () => D.placements.map((p) => ({ id: p.planet, label: p.planet,
+          meta: `${p.sign} · h${p.house}`, badge: D.strengths[p.planet].band })),
+        houses: () => D.houses.map((h) => ({ id: h.house, label: `${ord(h.house)} — ${h.name}`,
+          meta: `${h.sign}${h.occupants.length ? ' · ' + h.occupants.join(', ') : ' · empty'}` })),
+        areas: () => L.lifeAreas.map((a) => ({ id: a.key, label: a.name,
+          meta: `houses ${a.houses.join(', ')}`, badge: a.strongest?.band })),
+        karakas: () => L.karakas.map((k) => ({ id: k.key, label: k.name, meta: `${k.planet} · h${k.house}` })),
+        patterns: () => [...D.yogas.map((y) => ({ id: 'y:' + y.id, label: y.name, meta: 'yoga' })),
+          ...D.conjunctions.map((cj, i) => ({ id: 'c:' + i, label: cj.name || cj.pair.join(' + '), meta: `house ${cj.house}` }))],
+        image: () => [{ id: 'al', label: 'Arudha Lagna', meta: `house ${L.arudha.house} · ${L.arudha.sign}` },
+          ...L.arudha.readings.map((r) => ({ id: 'p:' + r.planet, label: r.planet, meta: 'shapes the image' }))],
+        remedies: () => L.remedies.map((r) => ({ id: r.planet, label: r.planet,
+          meta: `${r.day} · ${r.priority} priority`, badge: r.band })),
+        timing: () => [{ id: 'now', label: 'Where you are now', meta: 'dasha' },
+          { id: 'balance', label: 'Dasha at birth', meta: 'starting point' },
+          { id: 'maturity', label: 'Planet maturity', meta: 'fixed ages' }],
+        big3: () => [{ id: 'sun', label: 'Sun sign', meta: L.western.bigThree.sun },
+          { id: 'moon', label: 'Moon sign', meta: L.western.bigThree.moon },
+          { id: 'rising', label: 'Rising sign', meta: L.western.bigThree.rising }],
+        wplacements: () => L.western.placements.map((p) => ({ id: p.planet, label: p.planet,
+          meta: `${p.sign} · ${p.element}` })),
+        waspects: () => L.western.aspects.map((a, i) => ({ id: String(i), label: a.pair.join(' — '),
+          meta: `${a.name} · ${a.exactness}%` })),
+        balance: () => [{ id: 'el', label: 'Elements', meta: Object.keys(L.western.balance.element).join(', ') },
+          { id: 'mo', label: 'Modalities', meta: Object.keys(L.western.balance.modality).join(', ') }],
+        core: () => [{ id: 'driver', label: 'Driver (Mulank)', meta: `${L.numerology.driver.value} · ${L.numerology.driver.planet}` },
+          { id: 'conductor', label: 'Conductor (Bhagyank)', meta: `${L.numerology.conductor.value} · ${L.numerology.conductor.planet}` }],
+        name: () => [{ id: 'chaldean', label: 'Chaldean', meta: `value ${L.numerology.name.chaldean.value}` },
+          { id: 'pythagorean', label: 'Pythagorean', meta: `value ${L.numerology.name.pythagorean.value}` }],
+        loshu: () => [{ id: 'grid', label: 'Your grid', meta: '3×3 magic square' }],
+      };
+
+      function renderPicker() {
+        const items = (LISTS[state.lens] || (() => []))();
+        if (state.pick === null || !items.some((i) => String(i.id) === String(state.pick))) state.pick = items[0]?.id ?? null;
+        document.getElementById('picker').innerHTML = items.map((i) => `
+          <button type="button" class="explorer-item ${String(i.id) === String(state.pick) ? 'is-active' : ''}" data-id="${i.id}">
+            <span class="ei-label">${e(i.label)}</span><span class="ei-meta">${e(i.meta)}</span>
+            ${i.badge ? `<span class="band band--${i.badge}">${i.badge}</span>` : ''}
+          </button>`).join('');
+        document.querySelectorAll('.explorer-item').forEach((b) => b.addEventListener('click', () => {
+          state.pick = b.dataset.id;
+          if (state.lens === 'houses') { state.house = Number(b.dataset.id); renderChart(); }
+          renderPicker(); renderPanel();
+        }));
+      }
+
+      const strengthRows = (s) => `<div class="table-wrap"><table><tbody>
+        <tr><td>Sign dignity</td><td>${e(s.dignity.label)}</td><td class="num">${s.dignity.score}</td></tr>
+        <tr><td>Natural house</td><td>${e(s.natural.label || 'neutral')}</td><td class="num">${s.natural.score}</td></tr>
+        <tr><td>Avastha (by degree)</td><td>${e(s.avastha.name)}</td><td class="num">${s.avastha.score}</td></tr>
+        <tr><td>Combustion</td><td>${s.combustion.combust ? `burnt, ${s.combustion.gap.toFixed(1)}° from the Sun` : 'clear of the Sun'}</td><td class="num">${s.combustion.score}</td></tr>
+        <tr><td>Motion</td><td>${s.motion.retrograde ? 'retrograde' : 'direct'}</td><td class="num">${s.motion.score}</td></tr>
+        <tr><td>Dispositor — ${e(s.dispositor.name)}</td><td>${e(s.dispositor.note || '—')}</td><td class="num">${s.dispositor.score}</td></tr>
+      </tbody></table></div>`;
+
+      function renderPanel() {
+        const panel = document.getElementById('panel');
+        const brief = state.depth === 'brief', tech = state.depth === 'technical';
+        const P = state.pick;
+        let html = '<p class="muted">Nothing selected.</p>';
+
+        if (state.lens === 'planets') {
+          const p = D.placements.find((x) => x.planet === P); const s = D.strengths[p.planet];
+          html = `<div class="panel-head"><h2>${e(p.planet)}</h2>${band(s.band, s.score)}</div>
+            <p class="muted">${e(p.sign)} ${deg(p.degree)} · house ${p.house} · ${e(p.nakshatra.name)} pada ${p.nakshatra.pada}</p>
+            <p class="reading-text" style="font-size:1.03rem">${e(p.text)}</p>
+            ${brief ? '' : `<h3>What it reaches</h3><ul class="fact-list">${p.aspects.map((a) =>
+              `<li><span>${ord(a.count)} aspect</span><strong>house ${a.house} — ${e(a.area)}</strong></li>`).join('')}</ul>
+              ${D.conjunctions.filter((cj) => cj.pair.includes(p.planet)).map((cj) =>
+                `<h3>With ${e(cj.pair.find((x) => x !== p.planet))}</h3><p class="reading-text">${e(cj.text)}</p>`).join('')}`}
+            ${tech ? `<h3>How the strength is scored</h3>${strengthRows(s)}` : ''}`;
+        }
+
+        if (state.lens === 'houses') {
+          const h = D.houses.find((x) => x.house === Number(P));
+          const occ = D.placements.filter((p) => p.house === h.house);
+          html = `<div class="panel-head"><h2>${ord(h.house)} house — ${e(h.name)}</h2><span class="chip">${e(h.sign)}</span></div>
+            <p class="muted">${e(h.area)}</p><p class="reading-text">${e(h.chain)}</p>
+            ${occ.length ? `<h3>Sitting here</h3>${occ.map((p) => `<p class="reading-text"><strong>${e(p.planet)}.</strong> ${e(p.text)}</p>`).join('')}`
+              : `<p class="reading-text soft">No graha sits here, so this house reads through its lord <strong>${e(h.lord)}</strong> in house ${h.lordHouse}, and through whatever aspects it.</p>`}
+            ${brief ? '' : `<h3>Aspected by</h3>${h.aspectedBy.length
+              ? `<ul class="fact-list">${h.aspectedBy.map((a) => `<li><span>${e(a.planet)}</span><strong>${ord(a.count)} aspect from house ${a.from}</strong></li>`).join('')}</ul>`
+              : '<p class="soft">Nothing aspects this house.</p>'}`}`;
+        }
+
+        if (state.lens === 'areas') {
+          const a = L.lifeAreas.find((x) => x.key === P);
+          html = `<div class="panel-head"><h2>${e(a.name)}</h2>${a.strongest ? band(a.strongest.band, a.strongest.score) : ''}</div>
+            <p class="reading-text" style="font-size:1.03rem">${e(a.verdict)}</p>
+            ${a.karaka ? `<p class="reading-text">Its karaka is <strong>${e(a.karaka.planet)}</strong> (${e(a.karaka.name)}), sitting in house ${a.karaka.house}.</p>` : ''}
+            <h3>Houses that decide it</h3>
+            <ul class="fact-list">${a.houses.map((h) =>
+              `<li><span>${ord(h.house)} · ${e(h.sign)}</span><strong>${h.occupants.length ? e(h.occupants.join(', ')) : 'empty'} · lord ${e(h.lord)} in h${h.lordHouse}</strong></li>`).join('')}</ul>
+            ${brief ? '' : `<h3>Natural significators</h3><ul class="fact-list">${a.signifiers.map((s) =>
+              `<li><span>${e(s.planet)} in h${s.house}</span><strong>${s.band} · ${s.score}/10</strong></li>`).join('')}</ul>`}`;
+        }
+
+        if (state.lens === 'karakas') {
+          const k = L.karakas.find((x) => x.key === P);
+          html = `<div class="panel-head"><h2>${e(k.name)}</h2><span class="chip">${e(k.planet)}</span></div>
+            <p class="muted">${e(k.domain)}</p>
+            <p class="reading-text" style="font-size:1.03rem">${e(k.note)}</p>
+            <p class="reading-text">In your chart this is <strong>${e(k.planet)}</strong> at ${deg(k.degree)} of ${e(k.sign)}, in house ${k.house} — so read that house for this part of your life.</p>
+            ${tech ? `<p class="hint">Chara karakas rank the seven visible planets by degree within their sign, highest first. Rahu and Ketu are excluded.</p>` : ''}`;
+        }
+
+        if (state.lens === 'patterns') {
+          const id = String(P);
+          const item = id.startsWith('y:') ? D.yogas.find((y) => 'y:' + y.id === id) : D.conjunctions[Number(id.slice(2))];
+          if (item) html = `<div class="panel-head"><h2>${e(item.name || item.pair.join(' + '))}</h2>${item.house ? `<span class="chip">house ${item.house}</span>` : ''}</div>
+            <p class="reading-text" style="font-size:1.03rem">${e(item.text)}</p>`;
+        }
+
+        if (state.lens === 'image') {
+          const a = L.arudha;
+          if (P === 'al') {
+            html = `<div class="panel-head"><h2>Arudha Lagna</h2><span class="chip">house ${a.house} · ${e(a.sign)}</span></div>
+              <p class="reading-text" style="font-size:1.03rem">Your lagna is who you are. The Arudha is who people think you are — and for most people the two are not the same.</p>
+              <p class="reading-text">Yours falls in house ${a.house} (${e(a.sign)}), shaped by ${e(a.influences.join(', '))}.</p>
+              ${a.adjusted ? `<p class="hint">${e(a.adjusted)}</p>` : ''}
+              ${tech ? `<p class="hint">Counted from house 1 to the lagna lord, then the same distance again from the lord. It can never fall on the 1st or 7th.</p>` : ''}`;
+          } else {
+            const r = a.readings.find((x) => 'p:' + x.planet === P);
+            html = `<div class="panel-head"><h2>${e(r.planet)} on your Arudha</h2></div>
+              <p class="reading-text" style="font-size:1.03rem">${e(r.text)}</p>`;
+          }
+        }
+
+        if (state.lens === 'remedies') {
+          const r = L.remedies.find((x) => x.planet === P);
+          html = `<div class="panel-head"><h2>${e(r.planet)}</h2>${band(r.band, r.score)}</div>
+            <p class="muted">${e(r.priority)} priority · ${e(r.day)}</p>
+            <h3>Do</h3><p class="reading-text" style="font-size:1.03rem">${e(r.do)}</p>
+            ${brief ? '' : `<ul class="fact-list">
+              <li><span>Give</span><strong>${e(r.give)}</strong></li>
+              <li><span>Wear</span><strong>${e(r.wear)}</strong></li>
+              <li><span>Avoid receiving</span><strong>${e(r.avoid)}</strong></li></ul>
+              <p class="hint">These are traditional practices, not medical or financial advice.</p>`}`;
+        }
+
+        if (state.lens === 'timing') {
+          const d = data.dasha;
+          const MATURITY = { Jupiter: 16, Sun: 22, Moon: 24, Venus: 25, Mars: 28, Mercury: 32, Saturn: 36, Rahu: 42, Ketu: 48 };
+          const age = Math.floor((Date.now() - new Date(data.profile.birthDate)) / 31557600000);
+          if (P === 'now') {
+            html = `<div class="panel-head"><h2>${e(d.current.lord)} mahadasha</h2><span class="chip gold">running</span></div>
+              <p class="muted">${Vidhya.prettyDate(d.current.start)} → ${Vidhya.prettyDate(d.current.end)}</p>
+              ${d.currentAntar ? `<p class="reading-text">Inside it, the <strong>${e(d.currentAntar.lord)}</strong> antardasha runs to ${Vidhya.prettyDate(d.currentAntar.end)}.</p>` : ''}
+              <p class="reading-text">A placement is a promise; the dasha is when it gets delivered. Whatever ${e(d.current.lord)} touches in your chart is what these years keep raising.</p>
+              <a class="btn secondary" href="/dasha">Full timeline</a>`;
+          } else if (P === 'balance') {
+            html = `<h2>Dasha at birth</h2><p class="reading-text">You were born partway through a <strong>${e(d.balance.lord)}</strong> period, with ${d.balance.years.toFixed(1)} years of it still to run — fixed by exactly where your Moon sat in ${e(c.nakshatra.name)}.</p>`;
+          } else {
+            html = `<h2>Planet maturity</h2><p class="reading-text soft">Separately from dasha, each graha is held to wake up at a fixed age. You are ${age}.</p>
+              <ul class="fact-list">${Object.entries(MATURITY).sort((a, b) => a[1] - b[1]).map(([pl, a]) =>
+                `<li><span>${pl}</span><strong>${a} ${a <= age ? '· matured' : `· in ${a - age} yrs`}</strong></li>`).join('')}</ul>`;
+          }
+        }
+
+        // ------------------------------------------------------ western
+        if (state.lens === 'big3') {
+          const w = L.western;
+          const map = { sun: [w.sun, 'Sun', 'what you are becoming — the core drive'],
+            moon: [w.moon, 'Moon', 'what you need — the private, reactive self'],
+            rising: [{ ...w.rising, planet: 'Ascendant' }, 'Rising', 'the mask you meet the world in'] };
+          const [p, label, meaning] = map[P];
+          html = `<div class="panel-head"><h2>${label} in ${e(p.sign)}</h2>${p.element ? `<span class="chip">${e(p.element)}</span>` : ''}</div>
+            <p class="muted">${meaning}</p>
+            <p class="reading-text" style="font-size:1.03rem">${e(p.trait)}</p>
+            ${p.degree !== undefined ? `<p class="hint">${deg(p.degree)} of ${e(p.sign)} · tropical zodiac, no ayanamsa</p>` : ''}`;
+        }
+        if (state.lens === 'wplacements') {
+          const p = L.western.placements.find((x) => x.planet === P);
+          html = `<div class="panel-head"><h2>${e(p.planet)} in ${e(p.sign)}</h2><span class="chip">${e(p.element)} · ${e(p.modality)}</span></div>
+            <p class="reading-text" style="font-size:1.03rem">${e(p.trait)}</p>
+            <p class="hint">${deg(p.degree)} · house ${p.house}${p.retrograde ? ' · retrograde' : ''}</p>`;
+        }
+        if (state.lens === 'waspects') {
+          const a = L.western.aspects[Number(P)];
+          html = `<div class="panel-head"><h2>${e(a.pair.join(' — '))}</h2><span class="chip">${e(a.name)}</span></div>
+            <p class="reading-text" style="font-size:1.03rem">${/^[aeiou]/i.test(a.tone) ? "An" : "A"} ${e(a.tone)} aspect: ${a.separation.toFixed(1)}° apart, ${a.exactness}% exact against a ${a.orb}° orb.</p>
+            <p class="reading-text soft">Western astrology reads aspects by exact degree, unlike the whole-sign drishti used on the Vedic side — which is why the two systems disagree about what connects to what.</p>`;
+        }
+        if (state.lens === 'balance') {
+          const b = L.western.balance;
+          const set = P === 'el' ? b.element : b.modality;
+          html = `<h2>${P === 'el' ? 'Elements' : 'Modalities'}</h2>
+            <p class="reading-text" style="font-size:1.03rem">${e(b.text)}</p>
+            <ul class="fact-list">${Object.entries(set).sort((x, y) => y[1] - x[1]).map(([k, v]) =>
+              `<li><span>${k}</span><strong>${v} of 7</strong></li>`).join('')}</ul>
+            ${b.missing.length ? `<p class="hint">Missing entirely: ${e(b.missing.join(', '))} — often the quality you most have to learn deliberately.</p>` : ''}`;
+        }
+
+        // ------------------------------------------------------ numbers
+        if (state.lens === 'core') {
+          const n = L.numerology[P];
+          html = `<div class="panel-head"><h2>${e(n.label)} — ${n.value}</h2><span class="chip gold">${e(n.planet)}</span></div>
+            <p class="muted">from ${e(n.from)}</p>
+            <p class="reading-text" style="font-size:1.03rem">${e(n.trait)}</p>
+            <p class="reading-text">Number ${n.value} is ${e(n.planet)}. In your chart ${e(n.planet)} is
+              <strong>${e(D.strengths[n.planet].band)}</strong> at ${D.strengths[n.planet].score}/10, in house
+              ${c.planets.find((p) => p.name === n.planet).house} — which is where this number actually plays out for you.</p>
+            ${L.numerology.resonance ? `<p class="reading-text"><strong>${e(L.numerology.resonance)}</strong></p>` : ''}
+            ${tech ? `<p class="hint">Reduced ${n.steps.join(' → ')}</p>` : ''}`;
+        }
+        if (state.lens === 'name') {
+          const n = L.numerology.name[P];
+          html = `<div class="panel-head"><h2>${P === 'chaldean' ? 'Chaldean' : 'Pythagorean'} name number — ${n.value}</h2>
+            <span class="chip gold">${e({1:'Sun',2:'Moon',3:'Jupiter',4:'Rahu',5:'Mercury',6:'Venus',7:'Ketu',8:'Saturn',9:'Mars'}[n.value])}</span></div>
+            <p class="muted">${n.letters} letters · total ${n.total}</p>
+            <p class="reading-text">The two systems score letters differently, so they usually disagree. Chaldean has no 9 and assigns by sound; Pythagorean runs A=1 straight through.</p>
+            ${tech ? `<p class="hint">Reduced ${n.steps.join(' → ')}</p>` : ''}`;
+        }
+        if (state.lens === 'loshu') {
+          const g = L.numerology.loShu;
+          html = `<h2>Lo Shu grid</h2>
+            <p class="reading-text">Your birth date laid on the 3×3 square. A filled cell is a number you carry; an empty one is a quality you have to build deliberately.</p>
+            <div class="loshu">${g.grid.flat().map((cell) => `
+              <div class="loshu-cell ${cell.count ? 'has' : 'empty'}">
+                <span class="n">${cell.n}</span><span class="pl">${cell.planet}</span>
+                <span class="ct">${cell.count ? '•'.repeat(cell.count) : '—'}</span>
+              </div>`).join('')}</div>
+            ${g.repeated.length ? `<p class="reading-text"><strong>Repeated:</strong> ${g.repeated.map((r) => `${r.n} appears ${r.count}×`).join(', ')}.</p>` : ''}
+            ${g.missing.length ? `<p class="reading-text"><strong>Missing:</strong> ${g.missing.join(', ')}.</p>` : ''}`;
+        }
+
+        panel.innerHTML = html;
+      }
+
+      function sync() {
+        [['system', state.system], ['lens', state.lens], ['depth', state.depth], ['tone', state.tone]].forEach(([id, val]) =>
+          document.querySelectorAll(`#${id} button`).forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.value === val))));
+      }
+      Vidhya.bindSegmented(document.getElementById('system'), state.system, (v) => {
+        state.system = v; state.pick = null; renderLensBar(); sync(); renderPicker(); renderPanel();
+      });
+      Vidhya.bindSegmented(document.getElementById('depth'), state.depth, (v) => { state.depth = v; renderPanel(); });
+      Vidhya.bindSegmented(document.getElementById('tone'), state.tone, async (v) => {
+        state.tone = v; await load(); renderSummary(); renderPicker(); renderPanel(); renderChart();
+      });
+
+      renderSummary(); renderChart(); renderLensBar(); renderPicker(); renderPanel(); sync();
       document.getElementById('page').classList.remove('hidden');
-      await veil.done(1600);
+      await veil.done(1400);
     })();
   </script>
 </body>

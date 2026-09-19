@@ -9,6 +9,11 @@ const { timeline } = require('./lib/dasha');
 const { panchang } = require('./lib/panchang');
 const { suggestSyllable } = require('./lib/nwaran');
 const { personalReading } = require('./lib/rules');
+const { interpret } = require('./lib/interpret');
+const { evaluateAll } = require('./lib/strength');
+const { karakas, arudhaLagna, PUBLIC_IMAGE, LIFE_AREAS, lifeArea, remedies } = require('./lib/lenses');
+const { profile: numerologyProfile } = require('./lib/numerology');
+const { westernProfile } = require('./lib/western');
 
 const app = express();
 const PORT = process.env.PORT || 3100;
@@ -161,15 +166,41 @@ const slimPeriod = (p) => p && ({ lord: p.lord, start: p.start.toISOString().sli
 app.get('/api/kundli/me', requireUser, requireProfile, (req, res) => {
   const { place, utc, chart, dasha } = chartFor(req.profile);
   const { sections, matchedRules } = personalReading(chart, dasha);
+  // `tone=gentle` hides the guarded tier; `full` shows it.
+  const visibleTiers = req.query.tone === 'gentle' ? ['open'] : ['open', 'guarded'];
+  const detail = interpret(chart, dasha, { visibleTiers });
+
   res.json({
     profile: publicProfile(req.profile),
     place: `${place.name}, ${place.country}`,
     utc: utc.toISOString(),
     chart,
     nwaranSuggestion: suggestSyllable(chart.nakshatra.index, chart.nakshatra.pada),
-    dasha: { current: slimPeriod(dasha.current), currentAntar: slimPeriod(dasha.currentAntar) },
+    dasha: {
+      current: slimPeriod(dasha.current),
+      currentAntar: slimPeriod(dasha.currentAntar),
+      balance: dasha.balance,
+    },
     reading: sections,
     matchedRules,
+    detail,
+  });
+});
+
+// Everything the chart page needs beyond the core Vedic reading: the other
+// systems, and the lenses that ask different questions of the same chart.
+app.get('/api/lenses/me', requireUser, requireProfile, (req, res) => {
+  const { place, utc, chart } = chartFor(req.profile);
+  const strengths = evaluateAll(chart);
+  const arudha = arudhaLagna(chart);
+
+  res.json({
+    karakas: karakas(chart),
+    arudha: arudha && { ...arudha, readings: arudha.influences.map((p) => ({ planet: p, text: PUBLIC_IMAGE[p] })) },
+    lifeAreas: LIFE_AREAS.map((a) => lifeArea(chart, strengths, a.key)),
+    remedies: remedies(chart, strengths),
+    numerology: numerologyProfile(req.profile.birth_date, req.profile.full_name),
+    western: westernProfile(birthChart(utc, place.lat, place.lon, 'western')),
   });
 });
 

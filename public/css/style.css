@@ -326,3 +326,53 @@ tbody tr:hover { background: var(--surface-2); }
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
   .reveal { opacity: 1; transform: none; }
 }
+
+/* ---------- chart interactivity ---------- */
+.chart-svg .cell { cursor: pointer; }
+.chart-svg .hit { fill: transparent; }
+.chart-svg .cell:hover .hit { fill: color-mix(in srgb, var(--accent) 10%, transparent); }
+.chart-svg .cell:focus { outline: none; }
+.chart-svg .cell:focus-visible .hit { fill: color-mix(in srgb, var(--accent) 18%, transparent); stroke: var(--accent); stroke-width: 1.5; }
+.chart-svg .cell.is-selected .hit { fill: color-mix(in srgb, var(--accent) 18%, transparent); stroke: var(--accent); stroke-width: 1.5; }
+.chart-svg .deg { fill: var(--text-muted); font-size: 9px; }
+.chart-svg .planet .is-weak { fill: var(--text-muted); }
+
+/* ---------- explorer ---------- */
+.explorer { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 18px; align-items: start; }
+.explorer-list { display: grid; gap: 6px; position: sticky; top: 90px; max-height: 70vh; overflow-y: auto; padding-right: 4px; }
+.explorer-item {
+  display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; text-align: left;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  border-radius: var(--radius-sm); padding: 11px 14px; cursor: pointer; font: inherit;
+  transition: border-color 0.18s, background 0.18s, transform 0.18s var(--ease);
+}
+.explorer-item:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); transform: translateX(2px); }
+.explorer-item.is-active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
+.ei-label { font-weight: 600; font-size: 0.95rem; }
+.ei-meta { grid-column: 1 / -1; font-size: 0.8rem; color: var(--text-muted); }
+.explorer-panel { min-height: 320px; }
+.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.panel-head h2 { margin: 0; }
+.explorer-panel h3 { margin: 22px 0 8px; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); font-weight: 600; }
+.explorer-panel td.num { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-muted); }
+
+.band { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; padding: 3px 9px; border-radius: 999px; border: 1px solid; white-space: nowrap; }
+.band--strong { color: var(--good); border-color: color-mix(in srgb, var(--good) 45%, transparent); }
+.band--working { color: var(--text-soft); border-color: var(--border); }
+.band--strained { color: var(--gold); border-color: color-mix(in srgb, var(--gold) 45%, transparent); }
+.band--weak { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+
+@media (max-width: 860px) {
+  .explorer { grid-template-columns: 1fr; }
+  .explorer-list { position: static; max-height: none; grid-auto-flow: column; grid-auto-columns: minmax(180px, 1fr); overflow-x: auto; }
+  .ei-meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
+
+/* ---------- Lo Shu grid ---------- */
+.loshu { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 18px 0; max-width: 380px; }
+.loshu-cell { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 8px; text-align: center; background: var(--surface-2); }
+.loshu-cell.empty { opacity: 0.45; border-style: dashed; }
+.loshu-cell.has { border-color: color-mix(in srgb, var(--gold) 45%, transparent); }
+.loshu-cell .n { display: block; font-family: "Fraunces", Georgia, serif; font-size: 1.5rem; }
+.loshu-cell .pl { display: block; font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.loshu-cell .ct { display: block; color: var(--gold); letter-spacing: 2px; margin-top: 3px; min-height: 1em; }

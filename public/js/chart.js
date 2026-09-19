@@ -1,79 +1,64 @@
-// SVG renderers: North Indian diamond chart (Vedic) and a circular wheel (Western).
+// North Indian kundli: houses are fixed in place, signs rotate through them.
 const VidhyaChart = (() => {
   const ABBR = { Sun: 'Su', Moon: 'Mo', Mercury: 'Me', Venus: 'Ve', Mars: 'Ma', Jupiter: 'Ju', Saturn: 'Sa', Rahu: 'Ra', Ketu: 'Ke' };
-  const GLYPHS = ['♈︎', '♉︎', '♊︎', '♋︎', '♌︎', '♍︎', '♎︎', '♏︎', '♐︎', '♑︎', '♒︎', '♓︎'];
 
-  // North Indian: houses are fixed in place, signs rotate. Centres are for a 400×400 box.
-  const HOUSE_CENTRES = [[200, 110], [100, 45], [45, 100], [110, 200], [45, 300], [100, 355], [200, 290], [300, 355], [355, 300], [290, 200], [355, 100], [300, 45]];
+  // Label centre and the exact cell outline for each house, in a 400×400 box.
+  // House 1 is the top-centre diamond; houses run anticlockwise from there.
+  const HOUSES = [
+    { c: [200, 112], p: '200,0 300,100 200,200 100,100' },
+    { c: [100, 46], p: '0,0 200,0 100,100' },
+    { c: [46, 100], p: '0,0 100,100 0,200' },
+    { c: [112, 200], p: '0,200 100,100 200,200 100,300' },
+    { c: [46, 300], p: '0,200 100,300 0,400' },
+    { c: [100, 354], p: '0,400 100,300 200,400' },
+    { c: [200, 288], p: '200,400 100,300 200,200 300,300' },
+    { c: [300, 354], p: '200,400 300,300 400,400' },
+    { c: [354, 300], p: '400,400 300,300 400,200' },
+    { c: [288, 200], p: '400,200 300,300 200,200 300,100' },
+    { c: [354, 100], p: '400,200 300,100 400,0' },
+    { c: [300, 46], p: '400,0 300,100 200,0' },
+  ];
+  // The small corner triangles have less room than the four large diamonds.
+  const SMALL = [1, 2, 4, 5, 7, 8, 10, 11];
 
-  function northIndian(chart) {
+  function northIndian(chart, { selected = null, strengths = {} } = {}) {
     const byHouse = Array.from({ length: 12 }, () => []);
-    chart.planets.forEach((p) => byHouse[p.house - 1].push(ABBR[p.name] + (p.retrograde && !['Rahu', 'Ketu'].includes(p.name) ? 'ᴿ' : '')));
+    chart.planets.forEach((p) => byHouse[p.house - 1].push(p));
 
-    const houses = HOUSE_CENTRES.map(([x, y], i) => {
+    const cells = HOUSES.map(({ c: [x, y], p: outline }, i) => {
+      const house = i + 1;
       const signNum = ((chart.ascendant.signIndex + i) % 12) + 1;
-      const items = i === 0 ? ['Asc', ...byHouse[i]] : byHouse[i];
-      const small = [1, 2, 4, 5, 7, 8, 10, 11].includes(i);
+      const small = SMALL.includes(i);
+      const items = byHouse[i].map((p) => {
+        const band = strengths[p.name]?.band;
+        const mark = p.retrograde && !['Rahu', 'Ketu'].includes(p.name) ? '℞' : '';
+        return { label: ABBR[p.name] + mark, deg: Math.floor(p.degree), weak: band === 'weak' || band === 'strained' };
+      });
       const perRow = small ? 2 : 3;
       const rows = [];
       for (let r = 0; r < items.length; r += perRow) rows.push(items.slice(r, r + perRow));
-      const startY = y - ((rows.length - 1) * 15) / 2 + 6;
-      const numY = small ? y - 22 : y - 34;
+      const startY = y - ((rows.length - 1) * 16) / 2 + 5;
+
       return `
-        <text class="house-num" x="${x}" y="${numY}" text-anchor="middle">${signNum}</text>
-        ${rows.map((row, r) => `<text class="planet" x="${x}" y="${startY + r * 15}" text-anchor="middle">${row
-          .map((t) => (t === 'Asc' ? `<tspan class="asc">${t}</tspan>` : t)).join(' ')}</text>`).join('')}`;
+        <g class="cell ${selected === house ? 'is-selected' : ''}" data-house="${house}" role="button"
+           tabindex="0" aria-label="House ${house}, sign ${signNum}">
+          <polygon class="hit" points="${outline}"/>
+          <text class="house-num" x="${x}" y="${small ? y - 24 : y - 36}" text-anchor="middle">${signNum}</text>
+          ${house === 1 ? `<text class="asc" x="${x}" y="${y - 10}" text-anchor="middle">Asc</text>` : ''}
+          ${rows.map((row, r) => `<text class="planet" x="${x}" y="${startY + r * 16 + (house === 1 ? 8 : 0)}" text-anchor="middle">${
+            row.map((it) => `<tspan class="${it.weak ? 'is-weak' : ''}">${it.label}</tspan><tspan class="deg">${it.deg}</tspan>`).join(' ')
+          }</text>`).join('')}
+        </g>`;
     }).join('');
 
     return `
-      <svg class="chart-svg" viewBox="-4 -4 408 408" role="img" aria-label="North Indian kundli chart, ascendant ${chart.ascendant.sign}">
+      <svg class="chart-svg" viewBox="-6 -6 412 412" role="img"
+           aria-label="North Indian kundli chart, ${chart.ascendant.sign} ascendant">
         <rect class="frame" x="0" y="0" width="400" height="400" rx="4"/>
         <path class="line" d="M0 0 L400 400 M400 0 L0 400 M200 0 L400 200 L200 400 L0 200 Z"/>
-        ${houses}
+        ${cells}
       </svg>`;
   }
 
-  function wheel(chart) {
-    const cx = 200, cy = 200, rOuter = 190, rSigns = 160, rInner = 130;
-    const asc = chart.ascendant.longitude;
-    // Ascendant sits at 9 o'clock; zodiac runs counter-clockwise.
-    const point = (lon, r) => {
-      const a = ((180 + lon - asc) * Math.PI) / 180;
-      return [cx + r * Math.cos(a), cy - r * Math.sin(a)];
-    };
-
-    let svg = `<svg class="chart-svg" viewBox="0 0 400 400" role="img" aria-label="Western birth chart wheel, ascendant ${chart.ascendant.sign}">
-      <circle class="frame" cx="${cx}" cy="${cy}" r="${rOuter}"/>
-      <circle class="line" cx="${cx}" cy="${cy}" r="${rSigns - 15}"/>
-      <circle class="line" cx="${cx}" cy="${cy}" r="${rInner - 60}"/>`;
-
-    for (let i = 0; i < 12; i++) {
-      const [x1, y1] = point(i * 30, rOuter);
-      const [x2, y2] = point(i * 30, rInner - 60);
-      const [gx, gy] = point(i * 30 + 15, rSigns + 7);
-      svg += `<line class="line" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>
-        <text class="sign-label" x="${gx}" y="${gy + 5}" text-anchor="middle">${GLYPHS[i]}</text>`;
-    }
-
-    const [ax, ay] = point(asc, rOuter);
-    const [dx, dy] = point(asc + 180, rOuter);
-    svg += `<line x1="${ax}" y1="${ay}" x2="${dx}" y2="${dy}" stroke="var(--gold)" stroke-width="1.5" stroke-dasharray="4 4"/>
-      <text class="asc" x="${ax + 4}" y="${ay - 6}" font-size="12">Asc</text>`;
-
-    // Spread planets that sit close together onto staggered radii.
-    const sorted = [...chart.planets].sort((a, b) => a.longitude - b.longitude);
-    let prev = -999, level = 0;
-    sorted.forEach((p) => {
-      level = p.longitude - prev < 9 ? (level + 1) % 3 : 0;
-      prev = p.longitude;
-      const [px, py] = point(p.longitude, rInner - level * 20);
-      const [tx, ty] = point(p.longitude, rSigns - 15);
-      const [ix, iy] = point(p.longitude, rSigns - 22);
-      svg += `<line class="line" x1="${tx}" y1="${ty}" x2="${ix}" y2="${iy}"/>
-        <text class="planet" x="${px}" y="${py + 4}" text-anchor="middle">${ABBR[p.name]}</text>`;
-    });
-    return svg + '</svg>';
-  }
-
-  return { northIndian, wheel };
+  return { northIndian, ABBR };
 })();
