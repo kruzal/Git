@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vidhya — Today</title>
+  <script>(function(){var t;try{t=localStorage.getItem('vidhya-theme')}catch(e){}document.documentElement.dataset.theme=t||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')})()</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header class="site-header"></header>
+  <main>
+    <section class="hero reveal">
+      <p class="eyebrow" id="today-label"></p>
+      <h1 id="greeting">…</h1>
+      <p class="muted" id="subline"></p>
+    </section>
+
+    <div class="split">
+      <div class="stack">
+        <div class="card reveal">
+          <div class="toolbar" style="justify-content:space-between;margin-bottom:14px">
+            <h2 style="margin:0">Your reading</h2>
+            <div class="segmented" id="period-toggle" role="group" aria-label="Reading period">
+              <button type="button" data-value="daily">Today</button>
+              <button type="button" data-value="weekly">Week</button>
+              <button type="button" data-value="monthly">Month</button>
+            </div>
+          </div>
+          <div id="reading" aria-live="polite"><p class="muted">Reading the sky…</p></div>
+        </div>
+
+        <div class="card reveal">
+          <p class="eyebrow" style="margin-bottom:6px">Where you are in life</p>
+          <div id="dasha-now"><p class="muted">Loading…</p></div>
+          <a class="btn secondary" href="/dasha">See the full timeline</a>
+        </div>
+      </div>
+
+      <aside class="preview-pane">
+        <div class="card reveal">
+          <h2>Today's panchang</h2>
+          <div id="panchang"><p class="muted">Loading…</p></div>
+          <a class="btn secondary block" href="/panchang" style="margin-top:14px">Full panchang</a>
+        </div>
+        <div class="card reveal">
+          <h2>Talk to a priest</h2>
+          <p class="soft" style="font-size:0.94rem">Bring one clear question. A jyotishi reads your life, not just your placements.</p>
+          <div id="next-booking"></div>
+          <a class="btn block" href="/consult">Book a consultation</a>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <script src="/js/app.js"></script>
+  <script>
+    (async () => {
+      const me = await Vidhya.init();
+      if (!me) return;
+      const hour = new Date().getHours();
+      document.getElementById('today-label').textContent =
+        new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+      document.getElementById('greeting').textContent =
+        `${hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'}, ${Vidhya.firstName(me.profile.fullName)}`;
+
+      const kundli = await Vidhya.api('/api/kundli/me');
+      const c = kundli.chart;
+      document.getElementById('subline').innerHTML =
+        `<span class="chip">${c.ascendant.sign} lagna</span> <span class="chip">${c.moonSign} rashi</span> <span class="chip">${c.nakshatra.name} nakshatra</span>`;
+
+      const readingEl = document.getElementById('reading');
+      async function loadReading(period) {
+        readingEl.innerHTML = '<p class="muted">Reading the sky…</p>';
+        const r = await Vidhya.api(`/api/reading/me?period=${period}`);
+        readingEl.innerHTML = `
+          <div class="stars" aria-label="Rating ${r.rating} out of 5">${Vidhya.stars(r.rating)}</div>
+          <p class="reading-text" style="font-size:1.05rem">${r.summary}</p>
+          <p class="reading-text">${r.detail}</p>
+          <div class="meta-row">
+            <span class="chip gold">Lucky number ${r.luckyNumber}</span>
+            <span class="chip gold">${r.luckyColor}</span>
+            <span class="chip">From your ${r.sign} rashi</span>
+          </div>`;
+      }
+      Vidhya.bindSegmented(document.getElementById('period-toggle'), 'daily', loadReading);
+      loadReading('daily');
+
+      const d = kundli.dasha;
+      document.getElementById('dasha-now').innerHTML = d.current ? `
+        <h2 style="margin-bottom:6px">${d.current.lord} mahadasha</h2>
+        <p class="soft">Until ${Vidhya.prettyDate(d.current.end)}${
+          d.currentAntar ? `, currently through the <strong>${d.currentAntar.lord}</strong> antardasha (to ${Vidhya.prettyDate(d.currentAntar.end)})` : ''}.</p>`
+        : '<p class="muted">No active period found.</p>';
+
+      const p = await Vidhya.api('/api/panchang');
+      document.getElementById('panchang').innerHTML = `
+        <p class="muted" style="margin-top:0">${p.place}</p>
+        <ul class="fact-list">
+          <li><span>Tithi</span><strong>${p.tithi.label}</strong></li>
+          <li><span>Nakshatra</span><strong>${p.nakshatra}</strong></li>
+          <li><span>Sunrise</span><strong>${Vidhya.clockTime(p.sunrise, p.timezone)}</strong></li>
+          <li><span>Rahu kaal</span><strong>${Vidhya.clockTime(p.muhurtas?.rahuKaal.start, p.timezone)} – ${Vidhya.clockTime(p.muhurtas?.rahuKaal.end, p.timezone)}</strong></li>
+        </ul>`;
+
+      const bookings = await Vidhya.api('/api/bookings');
+      const upcoming = bookings.filter((b) => b.status !== 'cancelled' && new Date(b.slot_start.replace(' ', 'T')) > new Date())[0];
+      if (upcoming) {
+        document.getElementById('next-booking').innerHTML =
+          `<p><span class="chip gold">Next: ${Vidhya.escapeHtml(upcoming.priest_name)} · ${Vidhya.escapeHtml(upcoming.slot_start)}</span></p>`;
+      }
+    })();
+  </script>
+</body>
+</html>

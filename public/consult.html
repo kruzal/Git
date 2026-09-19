@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vidhya — Consult a priest</title>
+  <script>(function(){var t;try{t=localStorage.getItem('vidhya-theme')}catch(e){}document.documentElement.dataset.theme=t||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')})()</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header class="site-header"></header>
+  <main>
+    <section class="hero">
+      <p class="eyebrow">One to one</p>
+      <h1>Sit with a priest</h1>
+      <p class="muted">An app can read placements. A jyotishi reads your life. Pick someone, choose a time, and send the question you actually want answered — they see your chart before you speak.</p>
+    </section>
+
+    <h2>Choose a jyotishi</h2>
+    <div class="priest-grid" id="priests"></div>
+
+    <section id="booking" class="hidden" style="margin-top:28px">
+      <div class="card">
+        <h2 id="booking-title"></h2>
+        <p class="muted" id="booking-sub"></p>
+        <div id="slots"></div>
+        <div class="form-grid" style="margin-top:18px">
+          <div class="field"><label for="topic">What is this about?</label>
+            <select id="topic">
+              <option>Kundli reading</option>
+              <option>Career and work</option>
+              <option>Marriage and matching</option>
+              <option>Health and family</option>
+              <option>Muhurta — choosing a date</option>
+              <option>Puja and remedies</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label for="question">Your question <span class="muted">(optional)</span></label>
+          <textarea id="question" placeholder="One clear question gets a better answer than five vague ones."></textarea>
+        </div>
+        <p class="error" id="error"></p>
+        <button class="btn" id="request-btn" disabled>Request this time</button>
+      </div>
+    </section>
+
+    <h2 style="margin-top:34px">Your consultations</h2>
+    <div id="bookings"></div>
+  </main>
+
+  <script src="/js/app.js"></script>
+  <script>
+    (async () => {
+      const me = await Vidhya.init();
+      if (!me) return;
+      const state = { priest: null, slot: null };
+      const priests = await Vidhya.api('/api/priests');
+      const e = Vidhya.escapeHtml;
+      const initials = (name) => name.split(' ').map((w) => w[0]).slice(0, 2).join('');
+
+      document.getElementById('priests').innerHTML = priests.map((p) => `
+        <article class="card priest-card reveal" data-id="${p.id}" tabindex="0" aria-selected="false">
+          <div class="priest-top">
+            <div class="avatar">${e(initials(p.name))}</div>
+            <div>
+              <div class="name">${e(p.name)}</div>
+              <div class="muted" style="font-size:0.86rem">${e(p.title)} · ${p.experience_years} yrs</div>
+            </div>
+          </div>
+          <p class="soft" style="margin:0;font-size:0.93rem">${e(p.bio)}</p>
+          <div class="meta-row" style="margin:0">
+            <span class="chip">${e(p.speciality)}</span>
+            <span class="chip">${e(p.languages)}</span>
+            <span class="chip gold">NPR ${p.fee_npr}</span>
+          </div>
+        </article>`).join('');
+
+      const dayLabel = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' });
+
+      async function openPriest(id) {
+        state.priest = priests.find((p) => p.id === Number(id));
+        state.slot = null;
+        document.querySelectorAll('.priest-card').forEach((c) => c.setAttribute('aria-selected', String(Number(c.dataset.id) === state.priest.id)));
+        document.getElementById('booking').classList.remove('hidden');
+        document.getElementById('booking-title').textContent = `Book ${state.priest.name}`;
+        document.getElementById('booking-sub').textContent = `${state.priest.speciality} · NPR ${state.priest.fee_npr} per session · Nepal time`;
+        document.getElementById('request-btn').disabled = true;
+
+        const { slots } = await Vidhya.api(`/api/priests/${state.priest.id}/slots`);
+        const byDay = slots.reduce((acc, s) => {
+          const [day, time] = s.split(' ');
+          (acc[day] ||= []).push(time);
+          return acc;
+        }, {});
+        document.getElementById('slots').innerHTML = Object.entries(byDay).map(([day, times]) => `
+          <div class="day-group">
+            <h4>${dayLabel(day)}</h4>
+            <div class="slot-grid">
+              ${times.map((t) => `<button type="button" class="slot" data-slot="${day} ${t}" aria-pressed="false">${t}</button>`).join('')}
+            </div>
+          </div>`).join('');
+        document.getElementById('booking').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+
+      document.getElementById('priests').addEventListener('click', (ev) => {
+        const card = ev.target.closest('.priest-card');
+        if (card) openPriest(card.dataset.id);
+      });
+
+      document.getElementById('slots').addEventListener('click', (ev) => {
+        const btn = ev.target.closest('.slot');
+        if (!btn) return;
+        state.slot = btn.dataset.slot;
+        document.querySelectorAll('.slot').forEach((s) => s.setAttribute('aria-pressed', String(s === btn)));
+        document.getElementById('request-btn').disabled = false;
+      });
+
+      document.getElementById('request-btn').addEventListener('click', async () => {
+        const btn = document.getElementById('request-btn');
+        btn.disabled = true;
+        try {
+          await Vidhya.api('/api/bookings', {
+            method: 'POST',
+            body: {
+              priestId: state.priest.id, slotStart: state.slot,
+              topic: document.getElementById('topic').value, question: document.getElementById('question').value,
+            },
+          });
+          document.getElementById('question').value = '';
+          document.getElementById('booking').classList.add('hidden');
+          await loadBookings();
+          document.getElementById('bookings').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } catch (err) {
+          document.getElementById('error').textContent = err.message;
+          btn.disabled = false;
+        }
+      });
+
+      async function loadBookings() {
+        const list = await Vidhya.api('/api/bookings');
+        const box = document.getElementById('bookings');
+        if (!list.length) {
+          box.innerHTML = '<div class="card empty"><span class="mark">✶</span>No consultations yet. Your first one is the one that matters most — come with a question.</div>';
+          return;
+        }
+        box.innerHTML = `<div class="card">${list.map((b) => `
+          <div class="booking-row">
+            <div>
+              <strong>${e(b.priest_name)}</strong> <span class="muted">${e(b.priest_title)}</span><br>
+              <span class="soft">${e(b.slot_start)} · ${e(b.topic)}</span>
+              ${b.question ? `<br><span class="muted" style="font-size:0.88rem">“${e(b.question)}”</span>` : ''}
+            </div>
+            <div style="display:flex;align-items:center;gap:12px">
+              <span class="status ${b.status}">${b.status}</span>
+              ${b.status !== 'cancelled' ? `<button class="btn ghost" data-cancel="${b.id}">Cancel</button>` : ''}
+            </div>
+          </div>`).join('')}</div>`;
+      }
+
+      document.getElementById('bookings').addEventListener('click', async (ev) => {
+        const btn = ev.target.closest('[data-cancel]');
+        if (!btn || !confirm('Cancel this consultation?')) return;
+        await Vidhya.api(`/api/bookings/${btn.dataset.cancel}`, { method: 'DELETE' });
+        loadBookings();
+      });
+
+      loadBookings();
+    })();
+  </script>
+</body>
+</html>

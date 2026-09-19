@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vidhya — My kundli</title>
+  <script>(function(){var t;try{t=localStorage.getItem('vidhya-theme')}catch(e){}document.documentElement.dataset.theme=t||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')})()</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header class="site-header"></header>
+  <main id="page" class="hidden">
+    <section class="hero reveal">
+      <p class="eyebrow">Your birth chart</p>
+      <h1 id="title">…</h1>
+      <p class="muted" id="born"></p>
+    </section>
+
+    <div class="kundli-hero" id="stats"></div>
+
+    <div id="nwaran-note"></div>
+
+    <div class="chart-layout">
+      <div class="card reveal">
+        <div id="chart"></div>
+        <p class="hint" style="text-align:center;margin-top:12px">North Indian style · houses fixed, signs numbered</p>
+      </div>
+
+      <div class="stack">
+        <div id="reading"></div>
+        <details class="reading-section">
+          <summary><span class="section-icon">☿</span> Planetary positions</summary>
+          <div class="body"><div class="table-wrap"><table id="planet-table"></table></div></div>
+        </details>
+        <p class="hint">Calculated with the Lahiri ayanamsa and whole-sign houses. <a href="/onboarding?edit">Birth details wrong?</a></p>
+      </div>
+    </div>
+  </main>
+
+  <script src="/js/app.js"></script>
+  <script src="/js/chart.js"></script>
+  <script>
+    (async () => {
+      const me = await Vidhya.init();
+      if (!me) return;
+      const veil = Vidhya.skyVeil(['Reading your chart…', 'Weighing each placement…', 'Checking your dasha…']);
+      const data = await Vidhya.api('/api/kundli/me');
+      const c = data.chart;
+
+      document.getElementById('title').textContent = data.profile.fullName;
+      document.getElementById('born').textContent =
+        `Born ${Vidhya.prettyDate(data.profile.birthDate)} at ${data.profile.birthTime} · ${data.place}`;
+
+      const stats = [
+        ['Lagna', c.ascendant.sign, `${Vidhya.degrees(c.ascendant.degree)} · ruled by ${c.ascendant.lord}`],
+        ['Rashi (Moon)', c.moonSign, 'the mind and how you feel'],
+        ['Nakshatra', c.nakshatra.name, `pada ${c.nakshatra.pada} · lord ${c.nakshatra.lord}`],
+        ['Running dasha', data.dasha.current ? `${data.dasha.current.lord}` : '—',
+          data.dasha.current ? `until ${Vidhya.prettyDate(data.dasha.current.end)}` : ''],
+      ];
+      document.getElementById('stats').innerHTML = stats.map(([label, value, sub]) => `
+        <div class="stat reveal">
+          <span class="label">${label}</span>
+          <span class="value">${Vidhya.escapeHtml(value)}</span>
+          <span class="sub">${Vidhya.escapeHtml(sub)}</span>
+        </div>`).join('');
+
+      // The nwaran syllable is traditionally taken from the Moon's nakshatra pada.
+      if (data.nwaranSuggestion) {
+        document.getElementById('nwaran-note').innerHTML = `
+          <div class="card card--quiet reveal" style="margin-bottom:22px">
+            <p style="margin:0" class="soft">
+              ${data.profile.nwaranName
+                ? `Your nwaran name <strong>${Vidhya.escapeHtml(data.profile.nwaranName)}</strong> is recorded. By tradition, ${c.nakshatra.name} pada ${c.nakshatra.pada} gives the starting syllable <strong class="chip gold">${data.nwaranSuggestion}</strong>.`
+                : `You haven't added a nwaran name. Your Moon sits in ${c.nakshatra.name} pada ${c.nakshatra.pada}, so tradition gives the starting syllable <strong class="chip gold">${data.nwaranSuggestion}</strong>. <a href="/onboarding?edit">Add your name</a>`}
+            </p>
+          </div>`;
+      }
+
+      document.getElementById('chart').innerHTML = VidhyaChart.northIndian(c);
+      document.querySelector('#chart svg').classList.add('chart-draw');
+
+      const ICONS = { nature: '☾', career: '☉', wealth: '♃', relationships: '♀', health: '♂', timing: '♄' };
+      document.getElementById('reading').innerHTML = data.reading.map((s, i) => `
+        <details class="reading-section" ${i === 0 ? 'open' : ''}>
+          <summary><span class="section-icon">${ICONS[s.key] || '✶'}</span> ${s.title}</summary>
+          <div class="body">${s.lines.map((l) => `<p>${Vidhya.escapeHtml(l)}</p>`).join('')}</div>
+        </details>`).join('');
+
+      document.getElementById('planet-table').innerHTML = `
+        <thead><tr><th>Planet</th><th>Sign</th><th>Degree</th><th>House</th><th>Nakshatra</th></tr></thead>
+        <tbody>${c.planets.map((p) => `
+          <tr>
+            <td>${p.name}${p.retrograde && !['Rahu', 'Ketu'].includes(p.name) ? ' <span class="muted">℞</span>' : ''}</td>
+            <td>${p.sign}</td><td>${Vidhya.degrees(p.degree)}</td><td>${p.house}</td>
+            <td>${p.nakshatra.name} <span class="muted">${p.nakshatra.pada}</span></td>
+          </tr>`).join('')}</tbody>`;
+
+      document.getElementById('page').classList.remove('hidden');
+      await veil.done(1600);
+    })();
+  </script>
+</body>
+</html>

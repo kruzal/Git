@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vidhya — Dasha</title>
+  <script>(function(){var t;try{t=localStorage.getItem('vidhya-theme')}catch(e){}document.documentElement.dataset.theme=t||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')})()</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header class="site-header"></header>
+  <main>
+    <section class="hero">
+      <p class="eyebrow">Vimshottari dasha</p>
+      <h1>Your life in periods</h1>
+      <p class="muted">A 120-year cycle, divided between nine planets. The one running now colours everything you are living through — which is why the same transit lands differently at different times of life.</p>
+    </section>
+
+    <div class="card" id="now-card"><p class="muted">Loading…</p></div>
+
+    <h2 style="margin-top:28px">Whole timeline</h2>
+    <div class="life-bar" id="life-bar"></div>
+    <div class="card" style="padding:0" id="periods"></div>
+  </main>
+
+  <script src="/js/app.js"></script>
+  <script>
+    (async () => {
+      if (!await Vidhya.init()) return;
+      const d = await Vidhya.api('/api/dasha/me');
+      const now = new Date();
+      const year = (iso) => new Date(iso).getFullYear();
+
+      document.getElementById('now-card').innerHTML = d.current ? `
+        <p class="eyebrow" style="margin-bottom:6px">Running now</p>
+        <h2 style="margin-bottom:6px">${d.current.lord} mahadasha</h2>
+        <p class="soft">${Vidhya.prettyDate(d.current.start)} → ${Vidhya.prettyDate(d.current.end)}</p>
+        ${d.currentAntar ? `<p class="soft" style="margin:0">Inside it: <strong>${d.currentAntar.lord} antardasha</strong> until ${Vidhya.prettyDate(d.currentAntar.end)}.</p>` : ''}
+        <div class="meta-row"><span class="chip gold">At birth you had ${d.balance.years.toFixed(1)} years of ${d.balance.lord} left to run</span></div>`
+        : '<p class="muted">No running period found.</p>';
+
+      // Bar widths are proportional to each period's length, so a 20-year Venus looks like one.
+      const total = d.periods.reduce((sum, p) => sum + p.years, 0);
+      document.getElementById('life-bar').innerHTML = d.periods.map((p, i) => {
+        const state = new Date(p.end) < now ? 'past' : (p.lord === d.current?.lord ? 'now' : '');
+        return `<button type="button" class="${state}" style="flex:${p.years / total}" data-i="${i}" title="${p.lord}: ${year(p.start)}–${year(p.end)}">
+          ${p.years / total > 0.08 ? p.lord : ''}</button>`;
+      }).join('');
+
+      document.getElementById('periods').innerHTML = d.periods.map((p, i) => {
+        const isNow = p.lord === d.current?.lord;
+        return `
+          <details id="p${i}" ${isNow ? 'open' : ''}>
+            <summary class="period-row ${isNow ? 'now' : ''}" style="cursor:pointer;list-style:none">
+              <span class="period-lord">${p.lord}</span>
+              <span class="soft">${Vidhya.prettyDate(p.start)} → ${Vidhya.prettyDate(p.end)}</span>
+              <span class="muted">${p.years} yrs${isNow ? ' · now' : ''}</span>
+            </summary>
+            <ul class="sub-list">
+              ${p.antardashas.map((a) => {
+                const running = new Date(a.start) <= now && now < new Date(a.end);
+                return `<li class="${running ? 'now' : ''}">${a.lord} · ${Vidhya.prettyDate(a.start)} → ${Vidhya.prettyDate(a.end)}${running ? ' ← running' : ''}</li>`;
+              }).join('')}
+            </ul>
+          </details>`;
+      }).join('');
+
+      document.getElementById('life-bar').addEventListener('click', (e) => {
+        const btn = e.target.closest('button');
+        if (!btn) return;
+        const details = document.getElementById(`p${btn.dataset.i}`);
+        details.open = true;
+        details.scrollIntoView({ block: 'center' });
+      });
+    })();
+  </script>
+</body>
+</html>

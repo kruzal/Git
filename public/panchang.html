@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vidhya — Panchang</title>
+  <script>(function(){var t;try{t=localStorage.getItem('vidhya-theme')}catch(e){}document.documentElement.dataset.theme=t||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')})()</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header class="site-header"></header>
+  <main>
+    <section class="hero">
+      <p class="eyebrow">Panchang & muhurta</p>
+      <h1>The shape of the day</h1>
+      <p class="muted">Five limbs read at sunrise, and the hours worth avoiding or using.</p>
+    </section>
+
+    <div class="toolbar">
+      <div class="field" style="margin:0"><label for="date">Date</label><input id="date" type="date"></div>
+      <div class="field" style="margin:0;min-width:220px"><label for="city">Place</label><select id="city"></select></div>
+    </div>
+
+    <div class="split">
+      <div class="card" id="day-card"><p class="muted">Loading…</p></div>
+      <aside class="preview-pane">
+        <div class="card" id="limbs"></div>
+      </aside>
+    </div>
+  </main>
+
+  <script src="/js/app.js"></script>
+  <script>
+    (async () => {
+      const me = await Vidhya.init();
+      if (!me) return;
+      const dateEl = document.getElementById('date');
+      const cityEl = document.getElementById('city');
+      dateEl.value = new Date().toISOString().slice(0, 10);
+      const cities = await Vidhya.api('/api/cities');
+      cityEl.innerHTML = cities.map((c) => `<option value="${c.name}">${c.name}, ${c.country}</option>`).join('');
+      cityEl.value = me.profile.city;
+
+      // Places a band on the daylight bar at its true position between sunrise and sunset.
+      function band(p, window, className, label) {
+        if (!window) return '';
+        const dayStart = new Date(p.sunrise).getTime();
+        const daySpan = new Date(p.sunset).getTime() - dayStart;
+        const left = ((new Date(window.start).getTime() - dayStart) / daySpan) * 100;
+        const width = ((new Date(window.end).getTime() - new Date(window.start).getTime()) / daySpan) * 100;
+        return `<div class="day-band ${className}" style="left:${Math.max(0, left)}%;width:${width}%" title="${label}: ${Vidhya.clockTime(window.start, p.timezone)}–${Vidhya.clockTime(window.end, p.timezone)}">${width > 12 ? label : ''}</div>`;
+      }
+
+      async function load() {
+        const p = await Vidhya.api(`/api/panchang?date=${dateEl.value}&city=${encodeURIComponent(cityEl.value)}`);
+        const m = p.muhurtas;
+        const nowMark = (() => {
+          if (!m) return '';
+          const start = new Date(p.sunrise).getTime();
+          const span = new Date(p.sunset).getTime() - start;
+          const pct = ((Date.now() - start) / span) * 100;
+          return pct > 0 && pct < 100 ? `<div class="day-band now" style="left:${pct}%" title="Now"></div>` : '';
+        })();
+
+        document.getElementById('day-card').innerHTML = `
+          <h2 style="margin-bottom:4px">${p.vara.split(' ')[0]}</h2>
+          <p class="muted">${Vidhya.prettyDate(p.date)} · ${p.place}</p>
+          <div class="day-bar">
+            ${band(p, m?.rahuKaal, 'bad', 'Rahu kaal')}
+            ${band(p, m?.yamaganda, 'bad', 'Yamaganda')}
+            ${band(p, m?.abhijit, 'good', 'Abhijit')}
+            ${nowMark}
+          </div>
+          <div class="bar-legend">
+            <span><i style="background:color-mix(in srgb, var(--good) 60%, transparent)"></i>Auspicious</span>
+            <span><i style="background:color-mix(in srgb, var(--warn) 60%, transparent)"></i>Avoid</span>
+            <span>Sunrise ${Vidhya.clockTime(p.sunrise, p.timezone)} · Sunset ${Vidhya.clockTime(p.sunset, p.timezone)}</span>
+          </div>
+          <div class="stack" style="margin-top:22px">
+            <ul class="fact-list">
+              <li><span>Abhijit muhurta — good for starting</span><strong>${Vidhya.clockTime(m?.abhijit.start, p.timezone)} – ${Vidhya.clockTime(m?.abhijit.end, p.timezone)}</strong></li>
+              <li><span>Rahu kaal — avoid new work</span><strong>${Vidhya.clockTime(m?.rahuKaal.start, p.timezone)} – ${Vidhya.clockTime(m?.rahuKaal.end, p.timezone)}</strong></li>
+              <li><span>Yamaganda</span><strong>${Vidhya.clockTime(m?.yamaganda.start, p.timezone)} – ${Vidhya.clockTime(m?.yamaganda.end, p.timezone)}</strong></li>
+              <li><span>Gulika kaal</span><strong>${Vidhya.clockTime(m?.gulikaKaal.start, p.timezone)} – ${Vidhya.clockTime(m?.gulikaKaal.end, p.timezone)}</strong></li>
+              <li><span>Moonrise</span><strong>${Vidhya.clockTime(p.moonrise, p.timezone)}</strong></li>
+            </ul>
+          </div>`;
+
+        document.getElementById('limbs').innerHTML = `
+          <h2>The five limbs</h2>
+          <ul class="fact-list">
+            <li><span>Tithi</span><strong>${p.tithi.label}</strong></li>
+            <li><span>Vara</span><strong>${p.vara}</strong></li>
+            <li><span>Nakshatra</span><strong>${p.nakshatra}</strong></li>
+            <li><span>Yoga</span><strong>${p.yoga}</strong></li>
+            <li><span>Karana</span><strong>${p.karana}</strong></li>
+          </ul>
+          <p class="hint">Read at sunrise, the traditional start of the day. All timings are local to ${p.place}.</p>`;
+      }
+
+      dateEl.addEventListener('change', load);
+      cityEl.addEventListener('change', load);
+      load();
+    })();
+  </script>
+</body>
+</html>

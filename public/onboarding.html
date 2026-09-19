@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vidhya — Your birth details</title>
+  <script>(function(){var t;try{t=localStorage.getItem('vidhya-theme')}catch(e){}document.documentElement.dataset.theme=t||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')})()</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header class="site-header"></header>
+  <main>
+    <section class="hero" style="max-width:680px">
+      <h1 id="title">Your birth details</h1>
+      <p class="muted">These five details decide every reading in Vidhya. Birth time matters most — even twenty minutes changes your ascendant.</p>
+    </section>
+
+    <form class="card" id="profile-form" style="max-width:680px">
+      <div class="field">
+        <label for="fullName">Full name</label>
+        <input id="fullName" name="fullName" autocomplete="name" required>
+      </div>
+      <div class="field">
+        <label for="nwaranName">Nwaran name <span class="muted">(optional)</span></label>
+        <input id="nwaranName" name="nwaranName">
+        <span class="hint">Your ritual name from the nwaran ceremony. Leave it blank and we'll suggest the syllable your chart points to.</span>
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="birthDate">Date of birth</label>
+          <input id="birthDate" name="birthDate" type="date" required>
+        </div>
+        <div class="field">
+          <label for="birthTime">Time of birth</label>
+          <input id="birthTime" name="birthTime" type="time" required>
+          <span class="hint">As close as you know it</span>
+        </div>
+      </div>
+      <div class="field">
+        <label for="city">Place of birth</label>
+        <select id="city" name="city" required></select>
+      </div>
+      <p class="error" id="error"></p>
+      <button class="btn" type="submit" style="width:100%">Calculate my kundli</button>
+    </form>
+  </main>
+  <script src="/js/app.js"></script>
+  <script>
+    (async () => {
+      const me = await Vidhya.init();
+      if (!me) return;
+      const form = document.getElementById('profile-form');
+      const cities = await Vidhya.api('/api/cities');
+      form.city.innerHTML = cities.map((c) => `<option value="${c.name}">${c.name}, ${c.country}</option>`).join('');
+      form.city.value = 'Kathmandu';
+
+      // Editing existing details rather than setting them up for the first time.
+      if (me.profile) {
+        document.getElementById('title').textContent = 'Edit your birth details';
+        form.fullName.value = me.profile.fullName;
+        form.nwaranName.value = me.profile.nwaranName || '';
+        form.birthDate.value = me.profile.birthDate;
+        form.birthTime.value = me.profile.birthTime;
+        form.city.value = me.profile.city;
+        form.querySelector('button').textContent = 'Save changes';
+      }
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const veil = Vidhya.skyVeil(['Fixing your birth moment…', 'Placing the planets…', 'Rising sign and nakshatra…', 'Drawing your kundli…']);
+        try {
+          const { next } = await Vidhya.api('/api/profile', {
+            method: 'PUT',
+            body: {
+              fullName: form.fullName.value, nwaranName: form.nwaranName.value,
+              birthDate: form.birthDate.value, birthTime: form.birthTime.value, city: form.city.value,
+            },
+          });
+          await veil.done();
+          location.href = next;
+        } catch (err) {
+          await veil.done(0);
+          document.getElementById('error').textContent = err.message;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

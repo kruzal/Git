@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vidhya — Log in</title>
+  <script>(function(){var t;try{t=localStorage.getItem('vidhya-theme')}catch(e){}document.documentElement.dataset.theme=t||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')})()</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="entry">
+  <header class="site-header"></header>
+  <main>
+    <div class="entry-wrap">
+      <section class="entry-pitch">
+        <h1>Your chart, read for you</h1>
+        <p>Vidhya reads your own kundli — not a generic sign column. Your birth details shape every reading, your dasha timeline and the timings you get each day.</p>
+        <ul class="tick-list">
+          <li>A personal kundli with readings drawn from your own placements</li>
+          <li>Your Vimshottari dasha: which years belong to which planet</li>
+          <li>Daily panchang and muhurta for your city</li>
+          <li>One-on-one consultations with verified priests</li>
+        </ul>
+      </section>
+
+      <form class="card auth-card" id="login-form">
+        <h2>Log in</h2>
+        <p class="muted">Welcome back.</p>
+        <div class="field"><label for="email">Email</label><input id="email" name="email" type="email" autocomplete="email" required></div>
+        <div class="field"><label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required></div>
+        <p class="error" id="error"></p>
+        <button class="btn" type="submit" style="width:100%">Log in</button>
+        <p class="muted" style="text-align:center;margin-bottom:0">New here? <a href="/register">Create an account</a></p>
+      </form>
+    </div>
+  </main>
+  <script src="/js/app.js"></script>
+  <script>
+    Vidhya.init({ anonymous: true });
+    const form = document.getElementById('login-form');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        const { next } = await Vidhya.api('/api/auth/login', { method: 'POST', body: { email: form.email.value, password: form.password.value } });
+        location.href = next;
+      } catch (err) {
+        document.getElementById('error').textContent = err.message;
+      }
+    });
+  </script>
+</body>
+</html>
