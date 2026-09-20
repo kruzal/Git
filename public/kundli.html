@@ -24,8 +24,9 @@
       <div class="stack">
         <div class="card reveal">
           <div id="chart"></div>
+          <div id="hovercard" class="hovercard"></div>
           <p class="hint" style="text-align:center;margin-top:10px">
-            North Indian · houses fixed, numbers are signs · <strong>tap any house</strong> to read it
+            North Indian · houses fixed, numbers are signs · <strong>hover to preview, tap to open</strong>
           </p>
         </div>
         <div id="nwaran-note"></div>
@@ -154,7 +155,31 @@
           };
           cell.addEventListener('click', go);
           cell.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); go(); } });
+          cell.addEventListener('mouseenter', () => renderHover(Number(cell.dataset.house)));
+          cell.addEventListener('focus', () => renderHover(Number(cell.dataset.house)));
+          cell.addEventListener('mouseleave', () => renderHover(null));
         });
+      }
+
+      // Compact preview while the pointer is over a house. Falls back to the
+      // selected house so the card is never empty.
+      function renderHover(house) {
+        const box = document.getElementById('hovercard');
+        const n = house ?? (state.lens === 'houses' ? Number(state.pick) : null);
+        if (!n) { box.innerHTML = '<span class="hc-idle">Hover a house to preview it</span>'; return; }
+        const h = D.houses.find((x) => x.house === n);
+        const lordBit = h.lordStrength ? ' (' + e(h.lordStrength) + ')' : '';
+        const occBit = h.occupants.length ? e(h.occupants.join(', ')) : 'empty';
+        const aspBit = h.aspectedBy.length ? e(h.aspectedBy.map((a) => a.planet).join(', ')) : 'none';
+        box.innerHTML = [
+          '<div class="hc-head"><strong>' + ord(h.house) + ' · ' + e(h.sanskrit) + '</strong><span>' + e(h.sign) + '</span></div>',
+          '<div class="hc-body">',
+          '<span>' + e(h.name) + ' — ' + e(h.area) + '</span>',
+          '<span><b>Lord</b> ' + e(h.lord) + ' in h' + h.lordHouse + lordBit + '</span>',
+          '<span><b>Here</b> ' + occBit + ' · <b>Aspects</b> ' + aspBit + '</span>',
+          '</div>',
+          '<div class="hc-tags">' + h.tags.map((t) => '<span class="tag">' + e(t) + '</span>').join('') + '</div>',
+        ].join('');
       }
 
       // ---------------------------------------------- lenses per system
@@ -220,7 +245,7 @@
           </button>`).join('');
         document.querySelectorAll('.explorer-item').forEach((b) => b.addEventListener('click', () => {
           state.pick = b.dataset.id;
-          if (state.lens === 'houses') { state.house = Number(b.dataset.id); renderChart(); }
+          if (state.lens === 'houses') { state.house = Number(b.dataset.id); renderChart(); renderHover(null); }
           renderPicker(); renderPanel();
         }));
       }
@@ -255,13 +280,60 @@
         if (state.lens === 'houses') {
           const h = D.houses.find((x) => x.house === Number(P));
           const occ = D.placements.filter((p) => p.house === h.house);
-          html = `<div class="panel-head"><h2>${ord(h.house)} house — ${e(h.name)}</h2><span class="chip">${e(h.sign)}</span></div>
-            <p class="muted">${e(h.area)}</p><p class="reading-text">${e(h.chain)}</p>
-            ${occ.length ? `<h3>Sitting here</h3>${occ.map((p) => `<p class="reading-text"><strong>${e(p.planet)}.</strong> ${e(p.text)}</p>`).join('')}`
-              : `<p class="reading-text soft">No graha sits here, so this house reads through its lord <strong>${e(h.lord)}</strong> in house ${h.lordHouse}, and through whatever aspects it.</p>`}
-            ${brief ? '' : `<h3>Aspected by</h3>${h.aspectedBy.length
-              ? `<ul class="fact-list">${h.aspectedBy.map((a) => `<li><span>${e(a.planet)}</span><strong>${ord(a.count)} aspect from house ${a.from}</strong></li>`).join('')}</ul>`
-              : '<p class="soft">Nothing aspects this house.</p>'}`}`;
+          const parts = [];
+
+          parts.push('<div class="panel-head"><h2>' + ord(h.house) + ' — ' + e(h.sanskrit) + ' · ' + e(h.name)
+            + '</h2><span class="chip">' + e(h.sign) + '</span></div>');
+          parts.push('<div class="hc-tags" style="margin-bottom:12px">'
+            + h.tags.map((t) => '<span class="tag">' + e(t) + '</span>').join('') + '</div>');
+          parts.push('<p class="muted">' + e(h.area) + '</p>');
+          parts.push('<p class="reading-text">' + e(h.chain) + '</p>');
+
+          parts.push('<h3>What this house covers</h3><ul class="sig-list">'
+            + h.significations.map((x) => '<li>' + e(x) + '</li>').join('') + '</ul>');
+
+          if (occ.length) {
+            parts.push('<h3>Grahas sitting here</h3>');
+            occ.forEach((pl) => parts.push('<p class="reading-text"><strong>' + e(pl.planet) + '.</strong> ' + e(pl.text) + '</p>'));
+          } else {
+            parts.push('<p class="reading-text soft">No graha sits here. An empty house is not an empty area — it reads through its lord <strong>'
+              + e(h.lord) + '</strong> in house ' + h.lordHouse + ', and through whatever aspects it.</p>');
+          }
+
+          if (!brief) {
+            parts.push('<h3>Drishti falling on it</h3>');
+            if (h.aspectedBy.length) {
+              h.aspectedBy.forEach((a) => {
+                const note = a.protective
+                  ? '<p class="hint">Jupiter&rsquo;s aspect is the mitigating one — it softens what would otherwise damage this house.</p>' : '';
+                parts.push('<div class="aspect-row' + (a.protective ? ' is-protective' : '') + '">'
+                  + '<div class="ar-head"><strong>' + e(a.headline) + '</strong>'
+                  + '<span class="chip">' + ord(a.count) + ' from h' + a.from + '</span></div>'
+                  + '<p class="reading-text">' + e(a.text) + '</p>' + note + '</div>');
+              });
+            } else {
+              parts.push('<p class="soft">Nothing aspects this house, so it is read almost entirely through its lord.</p>');
+            }
+
+            parts.push('<h3>Reference</h3><ul class="fact-list">'
+              + '<li><span>Natural karaka</span><strong>' + e(h.karaka) + '</strong></li>'
+              + '<li><span>Body</span><strong>' + e(h.bodyPart) + '</strong></li>'
+              + (h.relation ? '<li><span>Relation</span><strong>' + e(h.relation) + '</strong></li>' : '')
+              + '<li><span>Activity in this chart</span><strong>' + h.activity + ' influence'
+              + (h.activity === 1 ? '' : 's') + '</strong></li></ul>');
+
+            parts.push('<h3>It answers</h3><ul class="sig-list">'
+              + h.asks.map((q) => '<li>' + e(q) + '</li>').join('') + '</ul>');
+            parts.push('<p class="hint">' + e(h.note) + '</p>');
+          }
+
+          if (tech) {
+            parts.push('<h3>Lord detail</h3><p class="soft">' + e(h.lord) + ' rules ' + e(h.sign)
+              + ', sits in house ' + h.lordHouse + ', strength ' + e(h.lordStrength || 'n/a')
+              + (h.lordScore ? ' (' + h.lordScore + '/10)' : '') + '.</p>');
+          }
+
+          html = parts.join('');
         }
 
         if (state.lens === 'areas') {
@@ -452,7 +524,7 @@
         state.tone = v; await load(); renderSummary(); renderPicker(); renderPanel(); renderChart();
       });
 
-      renderSummary(); renderChart(); renderLensBar(); renderPicker(); renderPanel(); sync();
+      renderSummary(); renderChart(); renderLensBar(); renderPicker(); renderPanel(); sync(); renderHover(null);
       document.getElementById('page').classList.remove('hidden');
       await veil.done(1400);
     })();

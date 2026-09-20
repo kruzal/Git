@@ -392,3 +392,21 @@ tbody tr:hover { background: var(--surface-2); }
 .chain-list li::before { content: counter(c); color: var(--gold); font-family: "Fraunces", Georgia, serif; }
 .chain-list strong { display: block; }
 .chain-list span { color: var(--text-muted); font-size: 0.9rem; }
+
+/* ---------- chart hover card ---------- */
+.hovercard { margin-top: 14px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); min-height: 92px; font-size: 0.9rem; }
+.hc-idle { color: var(--text-muted); }
+.hc-head { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+.hc-head strong { font-family: "Fraunces", Georgia, serif; }
+.hc-head span { color: var(--gold); }
+.hc-body { display: grid; gap: 3px; color: var(--text-soft); }
+.hc-body b { color: var(--text-muted); font-weight: 500; }
+.hc-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }
+.tag { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-muted); }
+
+/* ---------- bhava panel ---------- */
+.sig-list { list-style: none; padding: 0; margin: 0 0 4px; display: flex; flex-wrap: wrap; gap: 6px; }
+.sig-list li { font-size: 0.85rem; padding: 4px 11px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border-soft); color: var(--text-soft); }
+.aspect-row { border-left: 2px solid var(--border); padding: 4px 0 4px 14px; margin-bottom: 14px; }
+.aspect-row.is-protective { border-left-color: var(--gold); }
+.ar-head { display: flex; justify-content: space-between; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
