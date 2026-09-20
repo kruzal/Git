@@ -42,6 +42,7 @@ const Vidhya = (() => {
           ${profile ? `
             ${link('home', 'Today')}
             ${link('kundli', 'My kundli')}
+            ${link('year', 'My year')}
             ${link('dasha', 'Dasha')}
             ${link('panchang', 'Panchang')}
             ${link('consult', 'Consult')}

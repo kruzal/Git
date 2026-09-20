@@ -376,3 +376,19 @@ tbody tr:hover { background: var(--surface-2); }
 .loshu-cell .n { display: block; font-family: "Fraunces", Georgia, serif; font-size: 1.5rem; }
 .loshu-cell .pl { display: block; font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
 .loshu-cell .ct { display: block; color: var(--gold); letter-spacing: 2px; margin-top: 3px; min-height: 1em; }
+
+/* ---------- year page ---------- */
+.year-bar { position: relative; height: 10px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); margin: 18px 0 8px; overflow: hidden; max-width: 760px; }
+.year-fill { height: 100%; background: linear-gradient(90deg, var(--violet-deep), var(--violet)); }
+.year-now { position: absolute; top: -4px; width: 2px; height: 18px; background: var(--gold); box-shadow: 0 0 10px var(--gold); }
+.seg-bar { display: flex; height: 44px; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); }
+.seg { display: grid; place-items: center; background: var(--surface-2); border-right: 1px solid var(--border-soft); font-size: 0.76rem; color: var(--text-muted); overflow: hidden; padding: 0 4px; text-align: center; }
+.seg:last-child { border-right: 0; }
+.seg.is-now { background: linear-gradient(160deg, var(--violet), var(--violet-deep)); color: var(--accent-text); font-weight: 600; }
+
+/* ---------- devata chain ---------- */
+.chain-list { list-style: none; counter-reset: c; padding: 0; margin: 18px 0; display: grid; gap: 2px; }
+.chain-list li { counter-increment: c; display: grid; grid-template-columns: 26px 1fr; gap: 10px; padding: 11px 14px; background: var(--surface-2); border-left: 2px solid color-mix(in srgb, var(--gold) 45%, transparent); }
+.chain-list li::before { content: counter(c); color: var(--gold); font-family: "Fraunces", Georgia, serif; }
+.chain-list strong { display: block; }
+.chain-list span { color: var(--text-muted); font-size: 0.9rem; }

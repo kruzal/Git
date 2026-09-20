@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vidhya — My year</title>
+  <script>(function(){var t;try{t=localStorage.getItem('vidhya-theme')}catch(e){}document.documentElement.dataset.theme=t||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')})()</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header class="site-header"></header>
+  <main id="page" class="hidden">
+    <section class="hero reveal">
+      <p class="eyebrow">Varshaphal · your solar year</p>
+      <h1 id="title">…</h1>
+      <p class="muted" id="window"></p>
+      <div class="year-bar" id="bar"><div class="year-fill" id="fill"></div><div class="year-now" id="nowmark"></div></div>
+      <p class="hint" id="progress"></p>
+    </section>
+
+    <div class="split">
+      <div class="stack">
+        <div class="card reveal">
+          <p class="eyebrow" style="margin-bottom:6px">What this year is about</p>
+          <div id="muntha"></div>
+        </div>
+
+        <div class="card reveal">
+          <h2>How to get the most from it</h2>
+          <div id="actions"></div>
+        </div>
+
+        <div class="card reveal">
+          <h2>The year, period by period</h2>
+          <div id="segments"></div>
+        </div>
+      </div>
+
+      <aside class="preview-pane">
+        <div class="card reveal">
+          <h2>Your number this year</h2>
+          <div id="pyear"></div>
+        </div>
+        <div class="card reveal">
+          <h2>Slow transits</h2>
+          <div id="transits"></div>
+        </div>
+        <div class="card reveal" id="extras"></div>
+      </aside>
+    </div>
+  </main>
+
+  <script src="/js/app.js"></script>
+  <script>
+    (async () => {
+      const me = await Vidhya.init();
+      if (!me) return;
+      const e = Vidhya.escapeHtml;
+      const ord = (n) => n + (['th','st','nd','rd'][(n % 100 - 20) % 10] || ['th','st','nd','rd'][n % 100] || 'th');
+      const day = (d) => new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+
+      const [y, L] = await Promise.all([
+        Vidhya.api('/api/year/me'),
+        Vidhya.api('/api/lenses/me'),
+      ]);
+
+      // ------------------------------------------------------------ hero
+      const pct = Math.round(y.window.elapsed * 100);
+      document.getElementById('title').textContent = `Your ${ord(y.window.age + 1)} year`;
+      document.getElementById('window').textContent =
+        `${day(y.window.start)} → ${day(y.window.end)} · from the moment the Sun returned to where it sat when you were born`;
+      document.getElementById('fill').style.width = `${pct}%`;
+      document.getElementById('nowmark').style.left = `${pct}%`;
+      document.getElementById('progress').textContent =
+        `Day ${y.window.daysIn} · ${y.window.daysLeft} days left · ${pct}% through`;
+
+      // ---------------------------------------------------------- muntha
+      const m = y.muntha;
+      document.getElementById('muntha').innerHTML = `
+        <div class="panel-head"><h2 style="margin:0">Muntha in the ${ord(m.house)}</h2>
+          <span class="chip gold">${e(m.focus)}</span></div>
+        <p class="muted">${e(m.sign)} · lord ${e(m.lord)} in house ${m.lordHouse}</p>
+        <p class="reading-text" style="font-size:1.05rem">${e(m.text)}</p>
+        <p class="hint">The muntha starts on your lagna at birth and moves forward one house each year. At ${m.age} it sits in the ${ord(m.house)}.</p>`;
+
+      // --------------------------------------------------------- actions
+      // Muntha says where; the 11th lord says which activity moves wishes
+      // along; the weakest graha says what needs propping up.
+      const HOUSE_ACTION = {
+        1: 'Work on yourself directly — fitness, how you present, what you are willing to say out loud.',
+        2: 'Put your money in order. Automate savings, cancel what you forgot you were paying for, and watch how you speak.',
+        3: 'Write, sell, travel short distances, and lean on siblings. Effort converts unusually well this year.',
+        4: 'Fix your base — home, vehicle, the atmosphere you live in. Time with your mother counts as work here.',
+        5: 'Make something. Study something. Time with children, and anything creative you have been postponing.',
+        6: 'Clear the backlog — debts, paperwork, the routine you keep abandoning. Unglamorous, and it compounds.',
+        7: 'Decide about people. Partnerships, contracts, the conversation you keep deferring with the person closest to you.',
+        8: 'Hold plans loosely and research deeply. Sort insurance and documents before you need them.',
+        9: 'Travel far, study higher, seek out teachers. Respect toward your father moves this house directly.',
+        10: 'Be visible at work. Ask for the role, negotiate the number, put your name on the thing.',
+        11: 'Say yes to networks. Income and long-held wishes both arrive through people this year.',
+        12: 'Conserve. Close what is ending, rest properly, and spend on what compounds rather than what shows.',
+      };
+      const eleventh = y.manifestation;
+      document.getElementById('actions').innerHTML = `
+        <h3>Because the muntha is in the ${ord(m.house)}</h3>
+        <p class="reading-text">${e(HOUSE_ACTION[m.house])}</p>
+        <h3>To move what you actually want</h3>
+        <p class="reading-text">Your 11th lord is <strong>${e(eleventh.lord)}</strong>, sitting in house ${eleventh.house}.
+          ${e(HOUSE_ACTION[eleventh.house])}</p>
+        <h3>The graha needing most support</h3>
+        <p class="reading-text"><strong>${e(y.weakest.planet)}</strong> scores ${y.weakest.score}/10 — the lowest in your chart.
+          ${e(L.remedies.find((r) => r.planet === y.weakest.planet).do)}</p>
+        <p class="hint">Traditional practice, not medical or financial advice.</p>`;
+
+      // -------------------------------------------------------- segments
+      const total = new Date(y.window.end) - new Date(y.window.start);
+      document.getElementById('segments').innerHTML = `
+        <div class="seg-bar">${y.segments.map((s) => {
+          const w = ((new Date(s.end) - new Date(s.start)) / total) * 100;
+          const running = y.current && s.antar === y.current.antar && s.maha === y.current.maha;
+          return `<div class="seg ${running ? 'is-now' : ''}" style="flex:${w}" title="${e(s.maha)}/${e(s.antar)}">
+            ${w > 14 ? `${e(s.maha)}/${e(s.antar)}` : ''}</div>`;
+        }).join('')}</div>
+        <ul class="fact-list" style="margin-top:14px">
+          ${y.segments.map((s) => {
+            const running = y.current && s.antar === y.current.antar && s.maha === y.current.maha;
+            return `<li><span>${e(s.maha)} / ${e(s.antar)}${running ? ' · now' : ''}</span>
+              <strong>${day(s.start)} → ${day(s.end)}</strong></li>`;
+          }).join('')}
+        </ul>
+        <p class="hint">A placement is a promise; the dasha decides when it is delivered. These are the sub-periods falling inside your year.</p>`;
+
+      // ----------------------------------------------------- personal yr
+      const py = y.personalYear;
+      document.getElementById('pyear').innerHTML = `
+        <div class="panel-head"><h2 style="margin:0">${py.value}</h2><span class="chip gold">${e(py.planet)}</span></div>
+        <p class="muted">${py.year} · reduced ${py.steps.join(' → ')}</p>
+        <p class="reading-text">${e(py.trait)}</p>
+        <p class="hint">Numerology counts the calendar year; the muntha counts your solar year. When the two disagree, that tension is usually the year's real story.</p>`;
+
+      // -------------------------------------------------------- transits
+      document.getElementById('transits').innerHTML = `
+        <ul class="fact-list">
+          ${y.transits.list.map((t) => `<li><span>${e(t.planet)} in ${e(t.sign)}</span>
+            <strong>${ord(t.houseFromLagna)} from lagna</strong></li>`).join('')}
+        </ul>
+        ${y.transits.sadeSati.active
+          ? `<p class="reading-text" style="margin-top:12px"><strong>Sade sati — ${e(y.transits.sadeSati.phase)} phase.</strong> ${e(y.transits.sadeSati.text)}</p>`
+          : '<p class="hint">Sade sati is not running. Saturn is clear of the 12th, 1st and 2nd from your Moon.</p>'}
+        ${y.transits.dhaiya.active ? `<p class="reading-text"><strong>Dhaiya</strong> — Saturn is in the ${ord(y.transits.dhaiya.house)} from your Moon.</p>` : ''}`;
+
+      // ---------------------------------------------------------- extras
+      document.getElementById('extras').innerHTML = `
+        <h2>Also this year</h2>
+        ${y.maturing.length
+          ? y.maturing.map((x) => `<p class="reading-text"><strong>${e(x.planet)} matures at ${x.age}.</strong>
+              Separately from dasha, each graha is held to wake up at a fixed age — this one does so inside this year.</p>`).join('')
+          : '<p class="soft">No graha reaches its maturity age this year.</p>'}
+        <a class="btn secondary block" href="/dasha" style="margin-top:12px">Full dasha timeline</a>`;
+
+      document.getElementById('page').classList.remove('hidden');
+    })();
+  </script>
+</body>
+</html>

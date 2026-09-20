@@ -161,7 +161,7 @@
       const LENSES = {
         vedic: [['planets', 'Grahas'], ['houses', 'Bhavas'], ['areas', 'Life areas'],
           ['karakas', 'Karakas'], ['patterns', 'Patterns'], ['image', 'Public image'],
-          ['remedies', 'Remedies'], ['timing', 'Timing']],
+          ['remedies', 'Remedies'], ['devata', 'Devata'], ['timing', 'Timing']],
         western: [['big3', 'Big three'], ['wplacements', 'Placements'], ['waspects', 'Aspects'], ['balance', 'Balance']],
         numbers: [['core', 'Driver & Conductor'], ['name', 'Name number'], ['loshu', 'Lo Shu grid']],
       };
@@ -189,6 +189,8 @@
           ...L.arudha.readings.map((r) => ({ id: 'p:' + r.planet, label: r.planet, meta: 'shapes the image' }))],
         remedies: () => L.remedies.map((r) => ({ id: r.planet, label: r.planet,
           meta: `${r.day} · ${r.priority} priority`, badge: r.band })),
+        devata: () => [{ id: 'chain', label: 'The chain', meta: 'Ishvara to you' },
+          ...L.devata.all.map((d) => ({ id: d.graha, label: d.graha, meta: `${d.popular} · ${d.day}`, badge: d.band }))],
         timing: () => [{ id: 'now', label: 'Where you are now', meta: 'dasha' },
           { id: 'balance', label: 'Dasha at birth', meta: 'starting point' },
           { id: 'maturity', label: 'Planet maturity', meta: 'fixed ages' }],
@@ -315,6 +317,38 @@
               <li><span>Wear</span><strong>${e(r.wear)}</strong></li>
               <li><span>Avoid receiving</span><strong>${e(r.avoid)}</strong></li></ul>
               <p class="hint">These are traditional practices, not medical or financial advice.</p>`}`;
+        }
+
+        if (state.lens === 'devata') {
+          const D2 = L.devata;
+          if (P === 'chain') {
+            html = `<h2>The chain</h2>
+              <p class="reading-text" style="font-size:1.03rem">In this frame the grahas are not causes. They are agents — the mechanism through which something already owed to you gets delivered.</p>
+              <ol class="chain-list">${D2.hierarchy.map((h) =>
+                `<li><strong>${e(h.name)}</strong><span>${e(h.role)}</span></li>`).join('')}</ol>
+              <p class="reading-text">Which carries a practical consequence: a difficult graha is approached through the devata it answers to, rather than fought directly.</p>
+              <h3>Where yours points</h3>
+              <ul class="fact-list">
+                <li><span>Needs most support</span><strong>${e(D2.primary.graha)} → ${e(D2.primary.popular)}</strong></li>
+                ${D2.current ? `<li><span>Lord of your period</span><strong>${e(D2.current.graha)} → ${e(D2.current.popular)}</strong></li>` : ''}
+                <li><span>Already working</span><strong>${e(D2.strongest.graha)} → ${e(D2.strongest.popular)}</strong></li>
+              </ul>`;
+          } else {
+            const d = D2.all.find((x) => x.graha === P);
+            html = `<div class="panel-head"><h2>${e(d.graha)} — ${e(d.sanskrit)}</h2>${band(d.band, d.score)}</div>
+              <p class="muted">${e(d.governs)}</p>
+              <ul class="fact-list" style="margin:14px 0">
+                <li><span>Popularly</span><strong>${e(d.popular)}</strong></li>
+                <li><span>Adhidevata</span><strong>${e(d.adhidevata)}</strong></li>
+                <li><span>Pratyadhidevata</span><strong>${e(d.pratyadhidevata)}</strong></li>
+                <li><span>Avatar</span><strong>${e(d.avatar)}</strong></li>
+                <li><span>Day</span><strong>${e(d.day)}</strong></li>
+              </ul>
+              <h3>The blessing</h3><p class="reading-text" style="font-size:1.03rem">${e(d.blessing)}</p>
+              <h3>The quality it asks for</h3><p class="reading-text">${e(d.quality)}</p>
+              <h3>Observance</h3><p class="reading-text">${e(d.observance)}</p>
+              ${tech ? `<p class="hint">Adhidevata and pratyadhidevata follow Brihat Parashara Hora Shastra; the avatar follows the Dashavatara tradition; popular practice is recorded separately where it differs. Descriptive of tradition — no outcome is asserted.</p>` : ''}`;
+          }
         }
 
         if (state.lens === 'timing') {
