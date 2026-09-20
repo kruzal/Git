@@ -14,6 +14,9 @@ const { evaluateAll } = require('./lib/strength');
 const { karakas, arudhaLagna, PUBLIC_IMAGE, LIFE_AREAS, lifeArea, remedies } = require('./lib/lenses');
 const { profile: numerologyProfile } = require('./lib/numerology');
 const { westernProfile } = require('./lib/western');
+const { yearReport } = require('./lib/varsha');
+const { vector, schema } = require('./lib/indicators');
+const { devataReport } = require('./lib/devata');
 
 const app = express();
 const PORT = process.env.PORT || 3100;
@@ -201,6 +204,7 @@ app.get('/api/lenses/me', requireUser, requireProfile, (req, res) => {
     remedies: remedies(chart, strengths),
     numerology: numerologyProfile(req.profile.birth_date, req.profile.full_name),
     western: westernProfile(birthChart(utc, place.lat, place.lon, 'western')),
+    devata: devataReport(strengths, timeline(chart.planets.find((p) => p.name === 'Moon').longitude, utc).current?.lord),
   });
 });
 
@@ -278,6 +282,27 @@ app.delete('/api/bookings/:id', requireUser, (req, res) => {
   const { changes } = db.prepare("UPDATE bookings SET status = 'cancelled' WHERE id = ? AND user_id = ? AND status != 'cancelled'").run(req.params.id, req.user.id);
   if (!changes) return res.status(404).json({ error: 'Booking not found.' });
   res.json({ ok: true });
+});
+
+// The year from birthday to birthday, and what to do with it.
+app.get('/api/year/me', requireUser, requireProfile, (req, res) => {
+  const { chart, dasha } = chartFor(req.profile);
+  res.json(yearReport(chart, dasha, req.profile, evaluateAll(chart)));
+});
+
+// The research boundary: a flat, typed indicator vector for this chart.
+app.get('/api/indicators/me', requireUser, requireProfile, (req, res) => {
+  const { place, utc, chart, dasha } = chartFor(req.profile);
+  const strengths = evaluateAll(chart);
+  const extras = {
+    dasha,
+    varsha: yearReport(chart, dasha, req.profile, strengths),
+    numerology: numerologyProfile(req.profile.birth_date, req.profile.full_name),
+    western: westernProfile(birthChart(utc, place.lat, place.lon, 'western')),
+  };
+  res.json(req.query.format === 'map'
+    ? vector(chart, extras, { asMap: true })
+    : { count: vector(chart, extras).length, indicators: vector(chart, extras) });
 });
 
 app.listen(PORT, () => console.log(`Vidhya running at http://localhost:${PORT}`));
