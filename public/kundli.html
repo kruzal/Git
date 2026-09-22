@@ -187,7 +187,7 @@
         vedic: [['planets', 'Grahas'], ['houses', 'Bhavas'], ['areas', 'Life areas'],
           ['karakas', 'Karakas'], ['patterns', 'Patterns'], ['image', 'Public image'],
           ['remedies', 'Remedies'], ['devata', 'Devata'], ['timing', 'Timing']],
-        western: [['big3', 'Big three'], ['wplacements', 'Placements'], ['waspects', 'Aspects'], ['balance', 'Balance']],
+        western: [['big3', 'Big three'], ['wplacements', 'Placements'], ['whouses', 'Houses'], ['waspects', 'Aspects'], ['balance', 'Balance']],
         numbers: [['core', 'Driver & Conductor'], ['name', 'Name number'], ['loshu', 'Lo Shu grid']],
       };
 
@@ -224,10 +224,16 @@
           { id: 'rising', label: 'Rising sign', meta: L.western.bigThree.rising }],
         wplacements: () => L.western.placements.map((p) => ({ id: p.planet, label: p.planet,
           meta: `${p.sign} · ${p.element}` })),
+        whouses: () => L.western.houses.map((h) => ({ id: h.n, label: `${ord(h.n)} — ${h.name}`,
+          meta: `${h.cuspSign}${h.occupants.length ? ' · ' + h.occupants.join(', ') : ' · empty'}` })),
         waspects: () => L.western.aspects.map((a, i) => ({ id: String(i), label: a.pair.join(' — '),
-          meta: `${a.name} · ${a.exactness}%` })),
+          meta: `${a.name}${a.major ? '' : ' · minor'} · ${a.exactness}%`,
+          badge: a.harmony === 'harmonious' ? 'strong' : a.harmony === 'challenging' ? 'weak' : 'working' })),
         balance: () => [{ id: 'el', label: 'Elements', meta: Object.keys(L.western.balance.element).join(', ') },
-          { id: 'mo', label: 'Modalities', meta: Object.keys(L.western.balance.modality).join(', ') }],
+          { id: 'mo', label: 'Modalities', meta: Object.keys(L.western.balance.modality).join(', ') },
+          { id: 'pol', label: 'Polarity', meta: L.western.balance.polarityDominant },
+          { id: 'ruler', label: 'Chart ruler', meta: L.western.chartRuler.traditional },
+          { id: 'love', label: 'Love language', meta: L.western.loveLanguage.element }],
         core: () => [{ id: 'driver', label: 'Driver (Mulank)', meta: `${L.numerology.driver.value} · ${L.numerology.driver.planet}` },
           { id: 'conductor', label: 'Conductor (Bhagyank)', meta: `${L.numerology.conductor.value} · ${L.numerology.conductor.planet}` }],
         name: () => [{ id: 'chaldean', label: 'Chaldean', meta: `value ${L.numerology.name.chaldean.value}` },
@@ -456,24 +462,61 @@
         }
         if (state.lens === 'wplacements') {
           const p = L.western.placements.find((x) => x.planet === P);
-          html = `<div class="panel-head"><h2>${e(p.planet)} in ${e(p.sign)}</h2><span class="chip">${e(p.element)} · ${e(p.modality)}</span></div>
+          const wh = L.western.houses[p.house - 1];
+          html = `<div class="panel-head"><h2>${e(p.planet)} in ${e(p.sign)}</h2><span class="chip">${e(p.element)} · ${e(p.modality)} · ${e(p.polarity)}</span></div>
             <p class="reading-text" style="font-size:1.03rem">${e(p.trait)}</p>
+            <p class="reading-text soft">That lands in your ${ord(p.house)} house — ${e(wh.keywords.slice(0, 3).join(', '))}.</p>
             <p class="hint">${deg(p.degree)} · house ${p.house}${p.retrograde ? ' · retrograde' : ''}</p>`;
+        }
+        if (state.lens === 'whouses') {
+          const h = L.western.houses[Number(P) - 1];
+          html = `<div class="panel-head"><h2>${ord(h.n)} house — ${e(h.name)}</h2><span class="chip">${e(h.cuspSign)}${h.angular ? ' · angular' : ''}</span></div>
+            <p class="reading-text" style="font-size:1.03rem">${e(h.keywords.join(', '))}.</p>
+            <p class="reading-text soft">${h.occupants.length ? `Occupied by ${e(h.occupants.join(', '))}.` : 'No visible body sits here — its story is told by whoever rules it and whatever aspects it.'}</p>
+            <ul class="fact-list">
+              <li><span>Natural sign</span><strong>${e(h.naturalSign)}</strong></li>
+              <li><span>Traditional ruler</span><strong>${e(h.traditionalRuler)}</strong></li>
+              ${h.naturalRuler !== h.traditionalRuler ? `<li><span>Modern co-ruler</span><strong>${e(h.naturalRuler)}</strong></li>` : ''}
+            </ul>
+            <p class="hint">Natural houses describe the archetype; your own cusp sign (${e(h.cuspSign)}) shows how it actually shows up for you.</p>`;
         }
         if (state.lens === 'waspects') {
           const a = L.western.aspects[Number(P)];
-          html = `<div class="panel-head"><h2>${e(a.pair.join(' — '))}</h2><span class="chip">${e(a.name)}</span></div>
+          html = `<div class="panel-head"><h2>${e(a.pair.join(' — '))}</h2><span class="chip">${e(a.name)}${a.major ? '' : ' · minor'}</span></div>
             <p class="reading-text" style="font-size:1.03rem">${/^[aeiou]/i.test(a.tone) ? "An" : "A"} ${e(a.tone)} aspect: ${a.separation.toFixed(1)}° apart, ${a.exactness}% exact against a ${a.orb}° orb.</p>
-            <p class="reading-text soft">Western astrology reads aspects by exact degree, unlike the whole-sign drishti used on the Vedic side — which is why the two systems disagree about what connects to what.</p>`;
+            <p class="reading-text soft">${e(a.meaning)}</p>
+            ${a.toAngle ? `<p class="hint">One side is the Ascendant itself — contacts to an angle carry more weight than a planet-to-planet aspect of the same kind.</p>` : ''}
+            <p class="hint">Western astrology reads aspects by exact degree, unlike the whole-sign drishti used on the Vedic side — which is why the two systems disagree about what connects to what.</p>`;
         }
         if (state.lens === 'balance') {
           const b = L.western.balance;
-          const set = P === 'el' ? b.element : b.modality;
-          html = `<h2>${P === 'el' ? 'Elements' : 'Modalities'}</h2>
-            <p class="reading-text" style="font-size:1.03rem">${e(b.text)}</p>
-            <ul class="fact-list">${Object.entries(set).sort((x, y) => y[1] - x[1]).map(([k, v]) =>
-              `<li><span>${k}</span><strong>${v} of 7</strong></li>`).join('')}</ul>
-            ${b.missing.length ? `<p class="hint">Missing entirely: ${e(b.missing.join(', '))} — often the quality you most have to learn deliberately.</p>` : ''}`;
+          if (P === 'el' || P === 'mo') {
+            const set = P === 'el' ? b.element : b.modality;
+            const predominant = P === 'el' ? b.predominantElement : b.predominantModality;
+            const weakest = P === 'el' ? b.weakestElement : b.weakestModality;
+            html = `<h2>${P === 'el' ? 'Elements' : 'Modalities'}</h2>
+              <p class="reading-text" style="font-size:1.03rem">${e(b.text)}</p>
+              <ul class="fact-list">${Object.entries(set).sort((x, y) => y[1] - x[1]).map(([k, v]) =>
+                `<li><span>${k}</span><strong>${v} of ${b.total}</strong></li>`).join('')}</ul>
+              ${predominant.length ? `<p class="hint">Predominant (5 or more of ${b.total}): ${e(predominant.join(', '))} — strong enough to colour everything else, whatever your Sun sign says.</p>` : ''}
+              ${weakest.length ? `<p class="hint">Weakest (1 or fewer): ${e(weakest.join(', '))} — often the quality you have to learn deliberately rather than inherit.</p>` : ''}`;
+          } else if (P === 'pol') {
+            html = `<h2>Polarity</h2>
+              <p class="reading-text" style="font-size:1.03rem">You lean <strong>${e(b.polarityDominant)}</strong> — ${e(b.polarityText)}.</p>
+              <ul class="fact-list">${Object.entries(b.polarity).sort((x, y) => y[1] - x[1]).map(([k, v]) =>
+                `<li><span>${k}</span><strong>${v} of ${b.total}</strong></li>`).join('')}</ul>
+              <p class="hint">Fire and Air are Yang; Earth and Water are Yin. Same-polarity people tend to read each other easily.</p>`;
+          } else if (P === 'ruler') {
+            const cr = L.western.chartRuler;
+            html = `<h2>Chart ruler</h2>
+              <p class="reading-text" style="font-size:1.03rem">${e(cr.text)}</p>
+              <p class="hint">The ruler of your rising sign filters every other placement in the chart — check its house and sign for the tone the rest of the reading takes.</p>`;
+          } else if (P === 'love') {
+            const ll = L.western.loveLanguage;
+            html = `<h2>Love language</h2><span class="chip">${e(ll.element)} Venus</span>
+              <p class="reading-text" style="font-size:1.03rem">${e(ll.text)}</p>
+              <p class="hint">Drawn from Venus's element — distinct from what your Sun or Moon need, this is what makes affection actually register.</p>`;
+          }
         }
 
         // ------------------------------------------------------ numbers
