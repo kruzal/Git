@@ -234,6 +234,11 @@ lib/
   western.js      tropical placements, degree aspects, balance
   indicators.js   ← the research boundary
   findings.js     ← the reading boundary: one sentence, one topic, one power score
+  submodels.js    31 named readings over the findings pool: the catalogue
+  intent.js       a question -> topic + intent -> sub-models; boundaries first
+  timing.js       dasha windows for a topic (activity, never events)
+  actions.js      chart-anchored practice plans, and streak arithmetic
+  divisional.js   navamsa (D9) and dashamsa (D10)
   interpret.js    rules → sections, tier filtering
   rules.js        the editable rule corpus
 docs/
@@ -289,4 +294,68 @@ are never pooled.
 **Not yet on this model.** The Today/Week/Month text on the home page still comes from
 `lib/horoscope.js` (a Moon-sign transit template). Moving it onto findings means emitting
 transit findings for the fast planets with `horizon: day|week|month`.
+
+## 11. The personal space: sub-models, questions and practices
+
+The findings model scores sentences. This layer decides which sentences answer which
+question, and what the person does next. Three pieces, one pipeline:
+
+```
+question or catalogue card -> sub-model(s) -> findings + facts + windows + action plans
+                                                     |
+                                       chart highlights, practices, check-ins
+```
+
+**Sub-models** (`lib/submodels.js`). 31 named readings in 12 groups (the eight life topics,
+right now, your year, you, other systems). Each declares its id, group, the question it
+answers in a person's words, the intents that call it, and what it draws on: houses,
+planets, source patterns, systems, kinds. All return one shape. A topic reading only takes
+findings that belong to its topic, selected by house, or by planet only when the sentence
+itself names the topic. "Specialist" sources (arudha, divisional charts, other systems) only
+appear in a reading that asks for them by name. A reading with nothing above its floor
+returns an explicit quiet message, which is a finding, not an error.
+
+**Other factors on the same pool.** Navamsa and dashamsa (`lib/divisional.js`: vargottama,
+dignity in D9, planets in the D10 10th house), the arudha lagna, Western placements and
+numerology all emit findings through the same `emit`, scored by the same five components.
+Cross-system findings carry `SYSTEM_FACTOR` (western 0.8, numbers 0.7) as a stated prior, and
+numerology is joined to the chart through its planet, so a driver number whose planet is the
+running dasha lord is automatically live. Divisional charts add `div.*` indicators so the
+research vector covers them.
+
+**Timing** (`lib/timing.js`). For a topic: significator planets are the lords and occupants of
+its houses plus its natural significators, weighted (first house 3, second 2, rest 1). Each
+antardasha in the next twelve years scores 0.6 x main lord + 0.4 x sub lord against the
+strongest significator. Levels are relative to the best window in the horizon, so a quiet
+chart still shows its best stretch. Windows are activity, never events, and every result
+carries the `caution` text.
+
+**Questions** (`lib/intent.js`). Deterministic: a lexicon, not a language model, so the same
+question always gets the same answer and the routing is shown ("I read this as a timing
+question about marriage"). Topic from `TOPIC_TERMS` plus question-only words; intent from
+patterns (timing, decision, obstacle, remedy, strength, overview); direct asks name a reading
+outright. Intent changes the shape of the answer: timing leads with windows, a decision lists
+what supports it, what needs care and what is live, and says plainly that a chart does not
+decide for you. Boundaries are checked first and are not answered with a reading: crisis
+(supportive reply, no astrology), death or lifespan, medical, gambling, infidelity, and other
+people's charts (compatibility needs two charts, which this version does not take).
+
+**Actions** (`lib/actions.js`). A remedy that is read and not done changes nothing, so a plan
+carries: why (built from this chart: planet, house, sign, its role, the running period, and
+exactly how it touches the topic), the full practice, a two-minute version, a day, time of day
+and cue, what the person will notice in their own behaviour, and an eight-week trial. The text
+never claims a practice moves a planet or guarantees an outcome; it says what the tradition
+assigns and what the practice builds. People commit to a plan (`commitments`) and check in
+(`checkins`); weekly cadence on the planet's day, a week counts if it has any check-in, and the
+streak is derived from check-ins and never stored.
+
+**Privacy and research.** `asks` stores routing metadata only (outcome, topic, intent, models
+used), never the question text. That is enough to learn what people look for. `focus.primary_topic`
+segments users by what they came for. Every finding's `basis` ids are checked against the
+indicator vector across several charts (`probe`: 293 findings, 0 missing).
+
+**Known limits.** The router is a lexicon and will misread unusual phrasing; the catalogue is
+the fallback. Compatibility and synastry are not built. The Today/Week/Month reading is still
+`lib/horoscope.js`. Not computed: ashtakavarga, shadbala proper (strength uses its own
+composite), the other divisional charts, Jaimini dashas, muhurta for a chosen event.
 

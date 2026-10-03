@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vidhya — My space</title>
+  <script>(function(){var t;try{t=localStorage.getItem('vidhya-theme')}catch(e){}document.documentElement.dataset.theme=t||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')})()</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header class="site-header"></header>
+  <main id="page">
+    <section class="hero reveal">
+      <p class="eyebrow">Your space</p>
+      <h1>Everything your chart can say, in one place</h1>
+      <p class="muted">Ask in your own words, choose what matters most, or open any reading. Every answer shows what it rests on, lights up your chart, and ends in something you can actually do.</p>
+    </section>
+
+    <div class="card ask-card reveal">
+      <form class="ask-row" id="ask-form" autocomplete="off">
+        <input id="ask-input" type="text" maxlength="300" placeholder="Ask your chart anything, like “When will my career pick up?”" aria-label="Ask your chart a question">
+        <button class="btn" type="submit">Ask</button>
+      </form>
+      <div class="suggest" id="suggest"></div>
+      <div id="answer" aria-live="polite"></div>
+    </div>
+
+    <div class="space-grid">
+      <div class="stack" id="main">
+        <div class="card reveal" id="focus-card">
+          <div class="toolbar" style="justify-content:space-between;margin-bottom:10px">
+            <h2 style="margin:0">What matters most</h2>
+            <span class="hint" id="focus-status" aria-live="polite" style="margin:0"></span>
+          </div>
+          <p class="muted" id="focus-help" style="margin-top:0">Pick up to three, in order. They lead your space, and your highest-priority readings come first.</p>
+          <div class="suggest" id="focus-chips" style="margin-top:0"></div>
+        </div>
+
+        <div class="card reveal">
+          <div class="tabs" id="tabs" role="tablist" aria-label="Reading groups"></div>
+          <div id="readings"></div>
+        </div>
+      </div>
+
+      <aside class="space-side">
+        <div class="card reveal">
+          <p class="eyebrow" style="margin-bottom:6px">Your chart</p>
+          <div id="chart"></div>
+          <p class="chart-legend" id="legend"></p>
+        </div>
+        <div class="card reveal">
+          <h2>Your practices</h2>
+          <div id="practices"></div>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <script src="/js/app.js"></script>
+  <script src="/js/chart.js"></script>
+  <script>
+    (async () => {
+      const me = await Vidhya.init();
+      if (!me) return;
+      const e = Vidhya.escapeHtml;
+      const ord = (n) => n + (['th', 'st', 'nd', 'rd'][(n % 100 - 20) % 10] || ['th', 'st', 'nd', 'rd'][n % 100] || 'th');
+      const fmt = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+      const fmtDay = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+      const localDay = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+
+      const st = { space: null, tab: null, reading: null, answer: null, lit: { houses: [], planets: [] }, search: '' };
+      const $ = (id) => document.getElementById(id);
+
+      // ------------------------------------------------------------ data
+      async function load() {
+        st.space = await Vidhya.api(`/api/space/me?today=${localDay()}`);
+        if (!st.tab || !st.space.groups.some((g) => g.key === st.tab) && st.tab !== 'all') {
+          st.tab = st.space.focus.topics[0] || 'now';
+        }
+      }
+
+      // ----------------------------------------------------------- chart
+      const planetNames = (xs) => xs.join(', ');
+      function renderChart() {
+        const sp = st.space;
+        $('chart').innerHTML = VidhyaChart.northIndian(sp.chart, { strengths: sp.strengths, lit: st.lit });
+        const h = [...st.lit.houses].sort((a, b) => a - b).map((n) => `${ord(n)} house`);
+        $('legend').innerHTML = h.length || st.lit.planets.length
+          ? `<span style="color:var(--gold)">Lit:</span> ${e([...h, ...st.lit.planets].join(' · '))}`
+          : 'Open a reading and the houses and planets it rests on light up here.';
+      }
+      function setLit(hl) { st.lit = { houses: hl?.houses || [], planets: hl?.planets || [] }; renderChart(); }
+
+      // ----------------------------------------------------- priorities
+      let saveTimer = null;
+      function renderFocus() {
+        const sp = st.space;
+        const chosen = sp.focus.topics;
+        $('focus-chips').innerHTML = sp.focus.available.map((t) => {
+          const i = chosen.indexOf(t.key);
+          return `<button type="button" class="chip-btn" data-focus="${t.key}" aria-pressed="${i >= 0}" title="${e(t.blurb)}"
+            style="${i >= 0 ? 'border-color:var(--gold);color:var(--text)' : ''}">${i >= 0 ? `<b style="color:var(--gold)">${i + 1}</b> · ` : ''}${e(t.name)}</button>`;
+        }).join('');
+        $('focus-help').textContent = chosen.length
+          ? 'Your space is ordered for these. Click one to remove it, or pick another to add it.'
+          : 'Pick up to three, in order. They lead your space, and your highest-priority readings come first.';
+      }
+
+      async function toggleFocus(key) {
+        const chosen = [...st.space.focus.topics];
+        const i = chosen.indexOf(key);
+        if (i >= 0) chosen.splice(i, 1);
+        else if (chosen.length >= st.space.focus.max) { $('focus-status').textContent = 'Three is the limit. A priority list only works if it is short.'; return; }
+        else chosen.push(key);
+        st.space.focus.topics = chosen;
+        renderFocus();
+        $('focus-status').textContent = 'Saving…';
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(async () => {
+          try {
+            await Vidhya.api('/api/focus', { method: 'PUT', body: { topics: chosen } });
+            const keepTab = st.tab;
+            await load();
+            if (keepTab === 'all' || st.space.groups.some((g) => g.key === keepTab)) st.tab = keepTab;
+            $('focus-status').textContent = 'Saved';
+            renderAll();
+          } catch (err) { $('focus-status').textContent = err.message; }
+        }, 350);
+      }
+
+      // ------------------------------------------------------------ tabs
+      function renderTabs() {
+        const sp = st.space;
+        $('tabs').innerHTML = sp.groups.map((g) => `
+          <button type="button" class="tab" role="tab" data-tab="${g.key}" aria-selected="${st.tab === g.key}">
+            ${g.rank ? `<span class="rk">${g.rank}</span>` : ''}${e(g.name)}</button>`).join('')
+          + `<button type="button" class="tab" role="tab" data-tab="all" aria-selected="${st.tab === 'all'}">Everything · ${sp.catalog.length}</button>`;
+      }
+
+      // --------------------------------------------------- reading list
+      const badge = (text, cls = 'band--working') => `<span class="band ${cls}">${text}</span>`;
+      function cardHtml(r, showGroup) {
+        const g = st.space.groups.find((x) => x.key === r.group);
+        return `<button type="button" class="reading-card" data-open="${r.id}">
+          <h3>${e(r.title)}</h3>
+          <p class="q">${e(r.question)}</p>
+          ${r.preview ? `<p class="pv">${e(r.preview.sentence)}</p>` : `<p class="pv" style="color:var(--text-muted)">${r.hasTiming ? 'Shows the stretches of the next twelve years where this area has the most to work with.' : r.hasTables ? 'Shows the detailed chart behind this question.' : r.quiet ? 'Nothing in your chart carries real weight here, which is itself a finding.' : 'Open to read.'}</p>`}
+          <div class="badges">
+            ${showGroup && g ? badge(e(g.name)) : ''}
+            ${r.preview ? `<span class="power"><span class="power-track"><span class="power-fill" style="display:block;width:${r.preview.power}%"></span></span><span>power <strong>${r.preview.power}</strong></span></span>` : ''}
+            ${r.hasTiming ? badge('timing', 'kind--timing') : ''}
+            ${r.hasTables ? badge('detailed chart') : ''}
+            ${r.hasActions ? badge('has a practice', 'band--strong') : ''}
+          </div>
+        </button>`;
+      }
+
+      function renderReadings() {
+        if (st.reading) return renderReading();
+        const sp = st.space;
+        if (st.tab === 'all') {
+          const q = st.search.trim().toLowerCase();
+          const list = sp.catalog.filter((r) => !q || `${r.title} ${r.question} ${r.preview?.sentence || ''}`.toLowerCase().includes(q));
+          $('readings').innerHTML = `<input class="search" id="search" type="search" placeholder="Search all ${sp.catalog.length} readings" value="${e(st.search)}" aria-label="Search readings">
+            ${list.map((r) => cardHtml(r, true)).join('') || '<p class="muted">No reading matches that. Try a topic word like marriage, money, or year.</p>'}`;
+          const input = $('search');
+          input.addEventListener('input', () => { st.search = input.value; const pos = input.selectionStart; renderReadings(); const n = $('search'); n.focus(); n.setSelectionRange(pos, pos); });
+          return;
+        }
+        const g = sp.groups.find((x) => x.key === st.tab);
+        const list = sp.catalog.filter((r) => r.group === st.tab);
+        $('readings').innerHTML = `<p class="muted" style="margin-top:0">${e(g.blurb)}${g.rank ? ` · your priority ${g.rank}` : ''}</p>${list.map((r) => cardHtml(r, false)).join('')}`;
+      }
+
+      // --------------------------------------------------- reading view
+      function timelineHtml(w) {
+        const now = Date.now();
+        const end = now + 12 * 365.2425 * 86400000;
+        const span = end - now;
+        const x = (iso) => Math.max(0, Math.min(100, ((Date.parse(`${iso}T00:00:00`) - now) / span) * 100));
+        const bars = w.stretches.map((s) => `<div class="tl-bar ${s.level}" style="left:${x(s.start)}%;width:${Math.max(0.6, x(s.end) - x(s.start))}%" title="${e(`${fmt(s.start)} to ${fmt(s.end)}`)}"></div>`).join('');
+        const y0 = new Date().getFullYear();
+        const ticks = [0, 2, 4, 6, 8, 10, 12].map((k) => `<span class="tl-tick" style="left:${(k / 12) * 100}%">${y0 + k}</span>`).join('');
+        const rows = w.stretches.filter((s) => s.level !== 'quiet').map((s) => `<div class="stretch">
+            <span class="when">${e(fmt(s.start))} to ${e(fmt(s.end))}</span>
+            <span class="lvl">${badge(s.level, s.level === 'peak' ? 'band--strong' : 'band--working')}</span>${s.current ? ` ${badge('now', 'kind--timing')}` : ''}
+            <div class="hint">${e(s.why.join('; ') || 'Driven by the planets running these periods.')}</div></div>`).join('');
+        return `<div class="timeline"><div class="tl-track"></div>${bars}<div class="tl-now" style="left:0"></div>${ticks}</div>
+          ${rows || '<p class="muted">No stretch stands out in the next twelve years. This area stays steady rather than peaking.</p>'}
+          <p class="hint">${e(w.caution)}</p>`;
+      }
+
+      function tableHtml(t) {
+        return `<div class="block"><h3>${e(t.name)} · rises in ${e(t.lagna.sign)}</h3><div class="table-wrap"><table class="mini-table">
+          <thead><tr><th>Planet</th><th>Birth chart</th><th>${e(t.name)}</th><th>House</th><th></th></tr></thead><tbody>
+          ${t.planets.map((p) => `<tr><td>${e(p.name)}</td><td>${e(p.rashiSign)}</td><td>${e(p.sign)}</td><td>${p.house}</td>
+            <td>${p.vargottama ? badge('vargottama', 'band--strong') : ''}${p.dignity === 'exalted' || p.dignity === 'own sign' ? badge(e(p.dignity), 'band--strong') : p.dignity === 'debilitated' ? badge('debilitated', 'band--weak') : ''}</td></tr>`).join('')}
+          </tbody></table></div></div>`;
+      }
+
+      function planHtml(a) {
+        const started = st.space.practices.find((p) => p.actionId === a.id && p.status === 'active');
+        return `<div class="plan">
+          <div class="plan-head"><span class="plan-planet">${e(a.planet)}</span>
+            <span class="chip gold">${e(a.day)}s · ${e(a.window)} · ${a.minutes} min</span>
+            ${badge(`${a.band} ${a.score}/10`, `band--${a.band}`)}${a.live ? badge('live now', 'kind--timing') : ''}</div>
+          <p class="plan-do">${e(a.do)}</p>
+          <ul class="plan-why">${a.why.map((w) => `<li><b>${e(w.label)}.</b> ${e(w.text)}</li>`).join('')}</ul>
+          <div class="plan-grid">
+            <div class="plan-cell"><span>When</span>${e(a.cue)}</div>
+            <div class="plan-cell"><span>Too busy? The two-minute version</span>${e(a.tiny)}</div>
+            <div class="plan-cell"><span>How you will know</span>${e(a.marker)}</div>
+          </div>
+          <details><summary>Traditional extras, optional</summary><div class="hint" style="margin:0 0 8px">Give: ${e(a.optional.give)} · Wear: ${e(a.optional.wear)} · Avoid: ${e(a.optional.avoid)}</div></details>
+          ${started
+            ? `<span class="chip gold">Practising since ${e(fmt(started.startedOn))}. Check in under Your practices.</span>`
+            : `<button class="btn small" data-start="${e(a.planet)}" data-topic="${e(a.topic || '')}">Start this practice</button>
+               <span class="hint" style="display:inline;margin-left:8px">${a.trial.weeks}-week trial. ${e(a.trial.review)}</span>`}
+        </div>`;
+      }
+
+      function renderReading() {
+        const r = st.reading;
+        const g = st.space.groups.find((x) => x.key === r.group);
+        $('readings').innerHTML = `
+          <button type="button" class="back" data-back>← All ${e(g ? g.name.toLowerCase() : '')} readings</button>
+          <h2 class="reading-title">${e(r.title)}</h2>
+          <p class="reading-q">${e(r.question)}</p>
+          ${r.note ? `<div class="note-box">${e(r.note)}</div>` : ''}
+          ${r.summary ? `<p class="headline" style="font-family:'Fraunces',Georgia,serif;font-size:1.25rem;line-height:1.4;margin:0">${e(r.summary)}</p>` : ''}
+          ${r.windows ? `<div class="block"><h3>The next twelve years</h3>${timelineHtml(r.windows)}</div>` : ''}
+          ${r.findings.length ? `<div class="block"><h3>What your chart says</h3>${r.findings.map((f) => Vidhya.findingHtml(f, { action: false })).join('')}</div>` : ''}
+          ${r.tables.map(tableHtml).join('')}
+          ${r.devata ? `<div class="block"><h3>The deities behind your chart</h3><ul class="fact-list">${r.devata.map((d) =>
+            `<li><span>${e(d.label)}</span><strong>${e(d.adhidevata)} · ${e(d.popular)}</strong></li>`).join('')}</ul>
+            <p class="hint">Observance: ${r.devata.map((d) => `${e(d.popular)} on ${e(d.day)}`).join('; ')}.</p></div>` : ''}
+          ${r.facts.length ? `<div class="block"><h3>The facts behind it</h3><ul class="fact-list">${r.facts.map((f) => `<li><span>${e(f.label)}</span><strong>${e(f.value)}</strong></li>`).join('')}</ul></div>` : ''}
+          ${r.actions.length ? `<div class="block"><h3>What to do about it</h3>${r.actions.map(planHtml).join('')}</div>` : ''}`;
+      }
+
+      async function openReading(id) {
+        st.reading = await Vidhya.api(`/api/space/me/reading/${id}?today=${localDay()}`);
+        setLit(st.reading.highlights);
+        renderReadings();
+        $('readings').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+
+      // ---------------------------------------------------------- answer
+      function answerHtml(a) {
+        if (a.kind === 'boundary') {
+          return `<div class="answer boundary"><p>${e(a.message)}</p>${a.offer === 'consult' ? '<a class="btn secondary" href="/consult">Talk to a priest</a>' : ''}</div>`;
+        }
+        if (a.kind === 'unclear') {
+          return `<div class="answer"><p>${e(a.message)}</p><div class="suggest">${a.suggestions.map((s) =>
+            `<button type="button" data-ask="${e(s.question)}">${e(s.question)}</button>`).join('')}</div></div>`;
+        }
+        return `<div class="answer">
+          <p class="understood">${e(a.understood.text)}</p>
+          <p class="headline">${e(a.headline)}</p>
+          ${a.sections.map((s) => `<h3>${e(s.label)}</h3>${s.findings.map((f) => Vidhya.findingHtml(f, { why: false, action: false })).join('')}`).join('')}
+          ${a.windows ? `<h3>When</h3>${timelineHtml(a.windows)}` : ''}
+          ${a.actions.length ? `<h3>What to do</h3>${a.actions.map(planHtml).join('')}` : ''}
+          <h3>Models used</h3>
+          <div class="suggest" style="margin-top:4px">${a.models.map((m) => `<button type="button" data-open="${m.id}" title="${e(m.why.join(', '))}">${e(m.title)}</button>`).join('')}</div>
+          ${a.followups.length ? `<h3>Keep going</h3><div class="suggest" style="margin-top:4px">${a.followups.map((f) => `<button type="button" data-ask="${e(f.question)}">${e(f.question)}</button>`).join('')}</div>` : ''}
+        </div>`;
+      }
+
+      function renderAnswer() { $('answer').innerHTML = st.answer ? answerHtml(st.answer) : ''; }
+
+      async function ask(q) {
+        q = q.trim();
+        if (!q) return;
+        $('ask-input').value = q;
+        $('answer').innerHTML = '<p class="muted" style="margin-top:16px">Reading your chart…</p>';
+        try {
+          st.answer = await Vidhya.api(`/api/ask?q=${encodeURIComponent(q)}&today=${localDay()}`);
+          setLit(st.answer.highlights || { houses: [], planets: [] });
+        } catch (err) { st.answer = { kind: 'boundary', message: err.message }; }
+        renderAnswer();
+      }
+
+      // -------------------------------------------------------- practices
+      function renderPractices() {
+        const list = st.space.practices.filter((p) => p.status === 'active');
+        if (!list.length) {
+          $('practices').innerHTML = '<p class="muted" style="margin-top:0">Nothing started yet. Open a reading, and start the practice it points to. One at a time works best.</p>';
+          return;
+        }
+        $('practices').innerHTML = list.map((p) => {
+          const g = p.progress;
+          const dots = g.weekDots.map((d, i) => `<i class="${d ? 'done' : ''} ${i === g.weekNumber - 1 ? 'now' : ''}" title="Week ${i + 1}"></i>`).join('');
+          const due = g.doneThisWeek ? 'Done this week' : g.dueToday ? `Due today (${p.day})` : `Next: ${fmtDay(g.nextDue)}`;
+          return `<div class="practice">
+            <div class="practice-top"><strong>${e(p.planet)} · ${e(p.day)}s</strong><span class="hint" style="margin:0">${e(due)}</span></div>
+            <div class="week-dots" aria-label="Eight-week trial">${dots}</div>
+            <div class="meta">${g.trialComplete ? 'Trial complete. Look back: ' + e(p.plan.trial.review) : `Week ${g.weekNumber} of ${g.trialWeeks}`} · ${g.streakWeeks}-week streak · ${g.total} done</div>
+            <div class="meta" style="color:var(--text-soft)">${e(p.plan.cue)}. Short on time: ${e(p.plan.tiny)}</div>
+            ${g.doneThisWeek
+              ? `<span class="chip gold">Done this week</span> ${g.lastDone === localDay() ? `<button class="btn ghost small" data-undo="${p.actionId}">Undo</button>` : ''}`
+              : `<button class="btn small" data-checkin="${p.actionId}">I did it today</button>`}
+            <button class="btn ghost small" data-pause="${p.actionId}">Pause</button>
+          </div>`;
+        }).join('');
+      }
+
+      async function practiceCall(path, options) {
+        const r = await Vidhya.api(path, options);
+        st.space.practices = r.practices;
+        renderPractices();
+        if (st.reading) renderReading();
+        if (st.answer) renderAnswer();
+      }
+
+      // ---------------------------------------------------------- wiring
+      function renderAll() { renderFocus(); renderTabs(); renderReadings(); renderChart(); renderPractices(); renderSuggestions(); }
+
+      function renderSuggestions() {
+        const topics = st.space.focus.topics.length ? st.space.focus.topics : ['career', 'marriage', 'money'];
+        const picks = topics.flatMap((t) => st.space.catalog.filter((r) => r.group === t).slice(0, 2)).slice(0, 4);
+        $('suggest').innerHTML = picks.map((r) => `<button type="button" data-ask="${e(r.question)}">${e(r.question)}</button>`).join('');
+      }
+
+      document.body.addEventListener('click', (ev) => {
+        const t = ev.target.closest('[data-tab],[data-open],[data-ask],[data-focus],[data-back],[data-start],[data-checkin],[data-pause],[data-undo]');
+        if (!t) return;
+        if (t.dataset.tab) { st.tab = t.dataset.tab; st.reading = null; setLit(null); renderTabs(); renderReadings(); }
+        else if (t.dataset.open) openReading(t.dataset.open);
+        else if (t.dataset.ask) ask(t.dataset.ask);
+        else if (t.dataset.focus) toggleFocus(t.dataset.focus);
+        else if (t.hasAttribute('data-back')) { st.reading = null; setLit(st.answer?.highlights || null); renderReadings(); }
+        else if (t.dataset.start) practiceCall('/api/practices', { method: 'POST', body: { planet: t.dataset.start, topic: t.dataset.topic || null, today: localDay() } }).catch((x) => alert(x.message));
+        else if (t.dataset.checkin) practiceCall(`/api/practices/${t.dataset.checkin}/checkin`, { method: 'POST', body: { day: localDay() } }).catch((x) => alert(x.message));
+        else if (t.dataset.undo) practiceCall(`/api/practices/${t.dataset.undo}/checkin/${localDay()}`, { method: 'DELETE' });
+        else if (t.dataset.pause) practiceCall(`/api/practices/${t.dataset.pause}?today=${localDay()}`, { method: 'DELETE' });
+      });
+      $('ask-form').addEventListener('submit', (ev) => { ev.preventDefault(); ask($('ask-input').value); });
+
+      await load();
+      renderAll();
+    })();
+  </script>
+</body>
+</html>

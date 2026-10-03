@@ -23,7 +23,7 @@
         <div class="card reveal" id="priority-card">
           <p class="eyebrow" style="margin-bottom:6px">Your priorities</p>
           <div id="priority-body"><p class="muted">Ranking your chart…</p></div>
-          <a class="btn secondary" id="priority-link" href="/priorities">Choose what matters</a>
+          <a class="btn secondary" id="priority-link" href="/space">Choose what matters</a>
         </div>
 
         <div class="card reveal">
@@ -90,7 +90,7 @@
           const names = r.sections.map((s, i) => `<span class="chip ${i === 0 ? 'gold' : ''}">${i + 1} · ${Vidhya.escapeHtml(s.name)}</span>`).join(' ');
           body.innerHTML = `<p style="margin-top:0">${names}</p>${r.top.map((f) => Vidhya.findingHtml(f, { why: false })).join('')
             || '<p class="muted">Nothing in your chart clears the bar for these topics right now.</p>'}`;
-          document.getElementById('priority-link').textContent = 'See all your priorities';
+          document.getElementById('priority-link').textContent = 'Open your space';
         } catch (err) { body.innerHTML = '<p class="muted">Could not load your priorities.</p>'; }
       })();
 

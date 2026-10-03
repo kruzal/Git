@@ -21,7 +21,9 @@ const VidhyaChart = (() => {
   // The small corner triangles have less room than the four large diamonds.
   const SMALL = [1, 2, 4, 5, 7, 8, 10, 11];
 
-  function northIndian(chart, { selected = null, strengths = {} } = {}) {
+  function northIndian(chart, { selected = null, strengths = {}, lit = null } = {}) {
+    const litHouses = new Set(lit?.houses || []);
+    const litPlanets = new Set(lit?.planets || []);
     const byHouse = Array.from({ length: 12 }, () => []);
     chart.planets.forEach((p) => byHouse[p.house - 1].push(p));
 
@@ -32,7 +34,7 @@ const VidhyaChart = (() => {
       const items = byHouse[i].map((p) => {
         const band = strengths[p.name]?.band;
         const mark = p.retrograde && !['Rahu', 'Ketu'].includes(p.name) ? '℞' : '';
-        return { label: ABBR[p.name] + mark, deg: Math.floor(p.degree), weak: band === 'weak' || band === 'strained' };
+        return { label: ABBR[p.name] + mark, deg: Math.floor(p.degree), weak: band === 'weak' || band === 'strained', lit: litPlanets.has(p.name) };
       });
       const perRow = small ? 2 : 3;
       const rows = [];
@@ -40,13 +42,13 @@ const VidhyaChart = (() => {
       const startY = y - ((rows.length - 1) * 16) / 2 + 5;
 
       return `
-        <g class="cell ${selected === house ? 'is-selected' : ''}" data-house="${house}" role="button"
+        <g class="cell ${selected === house ? 'is-selected' : ''} ${litHouses.has(house) ? 'is-lit' : ''}" data-house="${house}" role="button"
            tabindex="0" aria-label="House ${house}, sign ${signNum}">
           <polygon class="hit" points="${outline}"/>
           <text class="house-num" x="${x}" y="${small ? y - 24 : y - 36}" text-anchor="middle">${signNum}</text>
           ${house === 1 ? `<text class="asc" x="${x}" y="${y - 10}" text-anchor="middle">Asc</text>` : ''}
           ${rows.map((row, r) => `<text class="planet" x="${x}" y="${startY + r * 16 + (house === 1 ? 8 : 0)}" text-anchor="middle">${
-            row.map((it) => `<tspan class="${it.weak ? 'is-weak' : ''}">${it.label}</tspan><tspan class="deg">${it.deg}</tspan>`).join(' ')
+            row.map((it) => `<tspan class="${it.weak ? 'is-weak' : ''} ${it.lit ? 'is-lit' : ''}">${it.label}</tspan><tspan class="deg">${it.deg}</tspan>`).join(' ')
           }</text>`).join('')}
         </g>`;
     }).join('');

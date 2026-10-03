@@ -40,6 +40,36 @@ db.exec(`
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE INDEX IF NOT EXISTS focus_primary_topic ON focus(primary_topic);
+  -- A practice someone has chosen to keep. One row per person per action; the action id is
+  -- stable (act.Saturn), so the same practice is never started twice.
+  CREATE TABLE IF NOT EXISTS commitments (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    action_id TEXT NOT NULL,
+    planet TEXT NOT NULL,
+    topic TEXT,
+    day TEXT NOT NULL,
+    started_on TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active',
+    PRIMARY KEY (user_id, action_id)
+  );
+  -- One row per day a practice was done. The streak is derived from these, never stored.
+  CREATE TABLE IF NOT EXISTS checkins (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    action_id TEXT NOT NULL,
+    day_done TEXT NOT NULL,
+    PRIMARY KEY (user_id, action_id, day_done)
+  );
+  -- What people look for, as routing metadata only. The question text is never stored.
+  CREATE TABLE IF NOT EXISTS asks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    asked_at TEXT NOT NULL DEFAULT (datetime('now')),
+    kind TEXT NOT NULL,
+    boundary TEXT,
+    topic TEXT,
+    intent TEXT,
+    models TEXT
+  );
   CREATE TABLE IF NOT EXISTS priests (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,

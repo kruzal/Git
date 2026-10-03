@@ -18,6 +18,10 @@ const { yearReport } = require('./lib/varsha');
 const { vector, schema } = require('./lib/indicators');
 const { devataReport } = require('./lib/devata');
 const Findings = require('./lib/findings');
+const Submodels = require('./lib/submodels');
+const Intent = require('./lib/intent');
+const Actions = require('./lib/actions');
+const { REMEDIES } = require('./lib/lenses');
 
 const app = express();
 const PORT = process.env.PORT || 3100;
@@ -87,6 +91,7 @@ app.use((req, res, next) => {
   if (!hasProfile && req.path !== '/onboarding') return res.redirect('/onboarding');
   if (hasProfile && req.path === '/onboarding' && req.query.edit === undefined) return res.redirect('/home');
   if (req.path === '/') return res.redirect('/home');
+  if (req.path === '/priorities') return res.redirect('/space');
   next();
 });
 
@@ -343,11 +348,8 @@ app.put('/api/focus', requireUser, (req, res) => {
 // Ranked findings for this person. `?topics=career,money` previews a focus without saving it;
 // `?format=table` returns every sentence with its score components, unfiltered, for research.
 app.get('/api/findings/me', requireUser, requireProfile, (req, res) => {
-  const { chart, dasha } = chartFor(req.profile);
-  const strengths = evaluateAll(chart);
-  const year = yearReport(chart, dasha, req.profile, strengths);
-  const visibleTiers = req.query.tone === 'gentle' ? ['open'] : ['open', 'guarded'];
-  const all = Findings.buildFindings({ chart, dasha, strengths, year, visibleTiers });
+  const ctx = spaceContext(req);
+  const all = ctx.all;
 
   if (req.query.format === 'table') return res.json({ model: Findings.MODEL_VERSION, weights: Findings.WEIGHTS, rows: Findings.table(all) });
 
@@ -360,6 +362,114 @@ app.get('/api/findings/me', requireUser, requireProfile, (req, res) => {
     meta: { model: Findings.MODEL_VERSION, weights: Findings.WEIGHTS, minPower, candidates: all.length,
       eligible: all.filter((f) => f.power >= minPower).length, droppedFootnotes: all.droppedFootnotes },
   });
+});
+
+// ---------- the personal space: every reading, the question box, and the practices ----------
+// One context per request: the chart, the findings pool and the other systems, shared by every
+// sub-model so that a catalogue card and a typed question can never disagree.
+function spaceContext(req) {
+  const { place, utc, chart, dasha } = chartFor(req.profile);
+  const strengths = evaluateAll(chart);
+  const year = yearReport(chart, dasha, req.profile, strengths);
+  const western = westernProfile(birthChart(utc, place.lat, place.lon, 'western'));
+  const numerology = numerologyProfile(req.profile.birth_date, req.profile.full_name);
+  const visibleTiers = req.query.tone === 'gentle' ? ['open'] : ['open', 'guarded'];
+  return Submodels.buildContext({ chart, dasha, strengths, year, western, numerology, visibleTiers });
+}
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const todayUtc = () => new Date().toISOString().slice(0, 10);
+// The server does not know the person's local date, so it takes the client's and only checks that
+// it is plausible: a valid date within a few days of server UTC.
+function plausibleDay(day) {
+  if (typeof day !== 'string' || !DATE_RE.test(day)) return false;
+  const t = Date.parse(`${day}T00:00:00Z`);
+  return Number.isFinite(t) && Math.abs(t - Date.now()) <= 3 * 86400000;
+}
+
+function practicesFor(userId, ctx, today) {
+  const rows = db.prepare('SELECT * FROM commitments WHERE user_id = ? ORDER BY started_on').all(userId);
+  return rows.map((c) => {
+    const plan = Actions.plan(c.planet, c.topic, ctx);
+    const checkins = db.prepare('SELECT day_done FROM checkins WHERE user_id = ? AND action_id = ? ORDER BY day_done')
+      .all(userId, c.action_id).map((r) => r.day_done);
+    return { actionId: c.action_id, planet: c.planet, topic: c.topic, status: c.status, startedOn: c.started_on, day: c.day,
+      plan, checkins: checkins.slice(-12), progress: Actions.progress({ checkins, startedOn: c.started_on, day: c.day, today }) };
+  });
+}
+
+const activeIds = (userId) => new Set(db.prepare("SELECT action_id FROM commitments WHERE user_id = ? AND status = 'active'")
+  .all(userId).map((r) => r.action_id));
+
+app.get('/api/space/me', requireUser, requireProfile, (req, res) => {
+  const ctx = spaceContext(req);
+  const focus = readFocus(req.user.id);
+  const today = plausibleDay(req.query.today) ? req.query.today : todayUtc();
+  const order = [...focus, ...Submodels.GROUPS.map((g) => g.key).filter((k) => !focus.includes(k))];
+  res.json({
+    focus: focusPayload(focus),
+    groups: order.map((k) => ({ ...Submodels.GROUPS.find((g) => g.key === k), rank: focus.indexOf(k) + 1 || null })),
+    catalog: Submodels.catalog(ctx),
+    chart: ctx.chart, strengths: ctx.strengths,
+    practices: practicesFor(req.user.id, ctx, today),
+    meta: { model: Findings.MODEL_VERSION, readings: Submodels.SUBMODELS.length, findings: ctx.all.length },
+  });
+});
+
+app.get('/api/space/me/reading/:id', requireUser, requireProfile, (req, res) => {
+  const ctx = spaceContext(req);
+  const reading = Submodels.run(req.params.id, ctx);
+  if (!reading) return res.status(404).json({ error: 'No such reading.' });
+  const mine = activeIds(req.user.id);
+  reading.actions.forEach((a) => { a.committed = mine.has(a.id); });
+  res.json(reading);
+});
+
+// Ask in your own words. Only routing metadata is kept (topic, intent, outcome, models used), never
+// the question text: enough to learn what people look for, without holding what they typed.
+app.get('/api/ask', requireUser, requireProfile, (req, res) => {
+  const ctx = spaceContext(req);
+  const ans = Intent.answer(req.query.q, ctx, { focus: readFocus(req.user.id) });
+  if (ans.kind === 'empty') return res.status(400).json({ error: 'Ask a question first.' });
+  db.prepare('INSERT INTO asks (user_id, kind, boundary, topic, intent, models) VALUES (?, ?, ?, ?, ?, ?)').run(
+    req.user.id, ans.kind, ans.id || null, ans.understood?.topics?.[0]?.key || null, ans.understood?.intent || null,
+    ans.models ? ans.models.map((m) => m.id).join(',') : null);
+  if (ans.actions) {
+    const mine = activeIds(req.user.id);
+    ans.actions.forEach((a) => { a.committed = mine.has(a.id); });
+  }
+  res.json(ans);
+});
+
+app.post('/api/practices', requireUser, requireProfile, (req, res) => {
+  const { planet, topic, today } = req.body || {};
+  if (!REMEDIES[planet] || !plausibleDay(today)) return res.status(400).json({ error: 'Choose a practice and send today\u2019s date.' });
+  const known = new Set(Findings.TOPICS.map((t) => t.key));
+  db.prepare(`
+    INSERT INTO commitments (user_id, action_id, planet, topic, day, started_on, status) VALUES (?, ?, ?, ?, ?, ?, 'active')
+    ON CONFLICT(user_id, action_id) DO UPDATE SET status = 'active', topic = excluded.topic`)
+    .run(req.user.id, `act.${planet}`, planet, known.has(topic) ? topic : null, REMEDIES[planet].day, today);
+  res.json({ practices: practicesFor(req.user.id, spaceContext(req), today) });
+});
+
+app.delete('/api/practices/:actionId', requireUser, requireProfile, (req, res) => {
+  const r = db.prepare("UPDATE commitments SET status = 'paused' WHERE user_id = ? AND action_id = ?").run(req.user.id, req.params.actionId);
+  if (!r.changes) return res.status(404).json({ error: 'No such practice.' });
+  res.json({ practices: practicesFor(req.user.id, spaceContext(req), plausibleDay(req.query.today) ? req.query.today : todayUtc()) });
+});
+
+app.post('/api/practices/:actionId/checkin', requireUser, requireProfile, (req, res) => {
+  const day = req.body?.day;
+  const own = db.prepare("SELECT 1 FROM commitments WHERE user_id = ? AND action_id = ? AND status = 'active'").get(req.user.id, req.params.actionId);
+  if (!own) return res.status(404).json({ error: 'Start this practice first.' });
+  if (!plausibleDay(day)) return res.status(400).json({ error: 'Send the date you did it.' });
+  db.prepare('INSERT OR IGNORE INTO checkins (user_id, action_id, day_done) VALUES (?, ?, ?)').run(req.user.id, req.params.actionId, day);
+  res.json({ practices: practicesFor(req.user.id, spaceContext(req), day) });
+});
+
+app.delete('/api/practices/:actionId/checkin/:day', requireUser, requireProfile, (req, res) => {
+  db.prepare('DELETE FROM checkins WHERE user_id = ? AND action_id = ? AND day_done = ?').run(req.user.id, req.params.actionId, req.params.day);
+  res.json({ practices: practicesFor(req.user.id, spaceContext(req), plausibleDay(req.params.day) ? req.params.day : todayUtc()) });
 });
 
 app.listen(PORT, () => console.log(`Vidhya running at http://localhost:${PORT}`));
