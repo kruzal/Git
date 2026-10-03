@@ -17,6 +17,7 @@ const { westernProfile } = require('./lib/western');
 const { yearReport } = require('./lib/varsha');
 const { vector, schema } = require('./lib/indicators');
 const { devataReport } = require('./lib/devata');
+const Findings = require('./lib/findings');
 
 const app = express();
 const PORT = process.env.PORT || 3100;
@@ -303,6 +304,62 @@ app.get('/api/indicators/me', requireUser, requireProfile, (req, res) => {
   res.json(req.query.format === 'map'
     ? vector(chart, extras, { asMap: true })
     : { count: vector(chart, extras).length, indicators: vector(chart, extras) });
+});
+
+// ---------- priorities: the one model every reading passes through ----------
+const readFocus = (userId) => {
+  const row = db.prepare('SELECT topics FROM focus WHERE user_id = ?').get(userId);
+  return row ? JSON.parse(row.topics) : [];
+};
+
+const focusPayload = (topics) => ({
+  topics, primary: topics[0] || null,
+  available: Findings.TOPICS.map((t) => ({ ...t, blurb: Findings.TOPIC_BLURB[t.key] })),
+  max: Findings.MAX_FOCUS,
+});
+
+app.get('/api/focus', requireUser, (req, res) => res.json(focusPayload(readFocus(req.user.id))));
+
+app.put('/api/focus', requireUser, (req, res) => {
+  const topics = req.body?.topics;
+  const known = new Set(Findings.TOPICS.map((t) => t.key));
+  if (!Array.isArray(topics) || topics.some((t) => !known.has(t)) || new Set(topics).size !== topics.length) {
+    return res.status(400).json({ error: 'Choose from the listed topics, each only once.' });
+  }
+  if (topics.length > Findings.MAX_FOCUS) {
+    return res.status(400).json({ error: `Choose at most ${Findings.MAX_FOCUS} — a priority list only works if it is short.` });
+  }
+  if (!topics.length) {
+    db.prepare('DELETE FROM focus WHERE user_id = ?').run(req.user.id);
+  } else {
+    db.prepare(`
+      INSERT INTO focus (user_id, topics, primary_topic) VALUES (?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET topics = excluded.topics, primary_topic = excluded.primary_topic, updated_at = datetime('now')`)
+      .run(req.user.id, JSON.stringify(topics), topics[0]);
+  }
+  res.json(focusPayload(topics));
+});
+
+// Ranked findings for this person. `?topics=career,money` previews a focus without saving it;
+// `?format=table` returns every sentence with its score components, unfiltered, for research.
+app.get('/api/findings/me', requireUser, requireProfile, (req, res) => {
+  const { chart, dasha } = chartFor(req.profile);
+  const strengths = evaluateAll(chart);
+  const year = yearReport(chart, dasha, req.profile, strengths);
+  const visibleTiers = req.query.tone === 'gentle' ? ['open'] : ['open', 'guarded'];
+  const all = Findings.buildFindings({ chart, dasha, strengths, year, visibleTiers });
+
+  if (req.query.format === 'table') return res.json({ model: Findings.MODEL_VERSION, weights: Findings.WEIGHTS, rows: Findings.table(all) });
+
+  const saved = readFocus(req.user.id);
+  const topics = typeof req.query.topics === 'string' ? req.query.topics.split(',').filter(Boolean) : saved;
+  const minPower = Number(req.query.min) || Findings.MIN_POWER;
+  res.json({
+    focus: focusPayload(topics),
+    ...Findings.forUser(all, topics, { minPower }),
+    meta: { model: Findings.MODEL_VERSION, weights: Findings.WEIGHTS, minPower, candidates: all.length,
+      eligible: all.filter((f) => f.power >= minPower).length, droppedFootnotes: all.droppedFootnotes },
+  });
 });
 
 app.listen(PORT, () => console.log(`Vidhya running at http://localhost:${PORT}`));

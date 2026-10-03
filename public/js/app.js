@@ -41,6 +41,7 @@ const Vidhya = (() => {
         <div class="nav-links">
           ${profile ? `
             ${link('home', 'Today')}
+            ${link('priorities', 'Priorities')}
             ${link('kundli', 'My kundli')}
             ${link('year', 'My year')}
             ${link('dasha', 'Dasha')}
@@ -96,6 +97,29 @@ const Vidhya = (() => {
     };
   }
 
+  // One finding, one sentence. The same markup everywhere a finding is shown, so a
+  // sentence looks and scores identically on the home page and the priorities page.
+  const KIND_LABEL = { strength: 'works for you', challenge: 'needs care', pattern: 'pattern', timing: 'live now' };
+  const COMPONENT_LABEL = { salience: 'planet salience', house: 'house weight', activation: 'activation now', convergence: 'convergence', actionability: 'actionable' };
+  function findingHtml(f, { why = true } = {}) {
+    const esc = escapeHtml;
+    return `<div class="finding">
+      <p class="finding-sentence">${esc(f.sentence)}</p>
+      <div class="finding-meta">
+        <span class="band kind--${f.kind}">${KIND_LABEL[f.kind] || f.kind}</span>
+        ${f.tier === 'guarded' ? '<span class="band band--strained">a tendency, not a verdict</span>' : ''}
+        <span class="power" title="Power: how much this matters in your chart right now, 0 to 100">
+          <span class="power-track"><span class="power-fill" style="display:block;width:${f.power}%"></span></span>
+          <span>power <strong>${f.power}</strong></span>
+        </span>
+      </div>
+      ${f.action ? `<div class="do-this"><b>Do this</b> ${esc(f.action.text)} <span class="hint" style="display:inline">Best on ${esc(f.action.day)}.</span></div>` : ''}
+      ${why ? `<details><summary>How this was scored</summary><div class="why">
+        ${Object.entries(f.components).map(([k, v]) => `${COMPONENT_LABEL[k]} ${v}`).join(' · ')}<br>
+        measured from <code>${f.basis.map(esc).join('</code>, <code>')}</code></div></details>` : ''}
+    </div>`;
+  }
+
   const stars = (n) => '★'.repeat(n) + '☆'.repeat(5 - n);
   const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const degrees = (d) => `${Math.floor(d)}°${String(Math.floor((d % 1) * 60)).padStart(2, '0')}′`;
@@ -106,5 +130,5 @@ const Vidhya = (() => {
     : '—');
   const firstName = (name) => String(name || '').trim().split(/\s+/)[0];
 
-  return { init, api, skyVeil, GLYPHS, VEDIC_ENGLISH, bindSegmented, stars, escapeHtml, degrees, prettyDate, clockTime, firstName };
+  return { init, api, skyVeil, GLYPHS, VEDIC_ENGLISH, bindSegmented, stars, escapeHtml, degrees, prettyDate, clockTime, firstName, findingHtml };
 })();

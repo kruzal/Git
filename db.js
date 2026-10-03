@@ -30,6 +30,16 @@ db.exec(`
     city TEXT NOT NULL,
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+  -- What the person chose to care about, most important first. Everything ranked in
+  -- the app is filtered through this. primary_topic is kept as its own indexed column
+  -- so users can be segmented by what they came for with plain SQL.
+  CREATE TABLE IF NOT EXISTS focus (
+    user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    topics TEXT NOT NULL,
+    primary_topic TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS focus_primary_topic ON focus(primary_topic);
   CREATE TABLE IF NOT EXISTS priests (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,

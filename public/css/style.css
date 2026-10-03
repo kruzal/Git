@@ -410,3 +410,33 @@ tbody tr:hover { background: var(--surface-2); }
 .aspect-row { border-left: 2px solid var(--border); padding: 4px 0 4px 14px; margin-bottom: 14px; }
 .aspect-row.is-protective { border-left-color: var(--gold); }
 .ar-head { display: flex; justify-content: space-between; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
+
+/* ------------------------------------------------------------ priorities */
+.topic-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+.topic-card { position: relative; text-align: left; font: inherit; color: var(--text); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px 16px 14px 16px; cursor: pointer; transition: border-color 0.2s, background 0.3s var(--ease), transform 0.2s; }
+.topic-card:hover { background: var(--surface-hover); transform: translateY(-1px); }
+.topic-card strong { display: block; font-weight: 600; margin-bottom: 3px; }
+.topic-card span.blurb { display: block; font-size: 0.82rem; color: var(--text-muted); line-height: 1.4; }
+.topic-card[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--surface-2)); }
+.topic-rank { position: absolute; top: 10px; right: 10px; width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: var(--accent-text); font-size: 0.8rem; font-weight: 700; display: grid; place-items: center; }
+
+.finding { padding: 16px 0; border-top: 1px solid var(--border-soft); }
+.finding:first-child { border-top: 0; padding-top: 4px; }
+.finding-sentence { font-size: 1.02rem; line-height: 1.55; margin: 0 0 10px; }
+.finding-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.power { display: inline-flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--text-muted); }
+.power-track { width: 84px; height: 6px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); overflow: hidden; }
+.power-fill { height: 100%; background: linear-gradient(90deg, var(--violet-deep), var(--gold)); }
+.power strong { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.do-this { margin-top: 12px; padding: 11px 14px; border-left: 3px solid var(--gold); background: color-mix(in srgb, var(--gold) 8%, transparent); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; font-size: 0.93rem; }
+.do-this b { color: var(--gold); font-weight: 600; margin-right: 4px; }
+.finding details { margin-top: 10px; }
+.finding summary { cursor: pointer; font-size: 0.8rem; color: var(--text-muted); }
+.finding summary:hover { color: var(--text-soft); }
+.finding .why { margin-top: 8px; font-size: 0.82rem; color: var(--text-muted); }
+.finding .why code { font-size: 0.78rem; color: var(--text-soft); }
+.section-head { display: flex; align-items: baseline; gap: 12px; margin: 0 0 4px; }
+.section-head .rank { font-family: "Fraunces", serif; font-size: 1.6rem; color: var(--gold); }
+.kind--strength { color: var(--good); border-color: color-mix(in srgb, var(--good) 45%, transparent); }
+.kind--challenge { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+.kind--timing { color: var(--violet); border-color: color-mix(in srgb, var(--violet) 45%, transparent); }

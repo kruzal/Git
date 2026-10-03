@@ -20,9 +20,15 @@
 
     <div class="split">
       <div class="stack">
+        <div class="card reveal" id="priority-card">
+          <p class="eyebrow" style="margin-bottom:6px">Your priorities</p>
+          <div id="priority-body"><p class="muted">Ranking your chart…</p></div>
+          <a class="btn secondary" id="priority-link" href="/priorities">Choose what matters</a>
+        </div>
+
         <div class="card reveal">
           <div class="toolbar" style="justify-content:space-between;margin-bottom:14px">
-            <h2 style="margin:0">Your reading</h2>
+            <h2 style="margin:0">The sky today</h2>
             <div class="segmented" id="period-toggle" role="group" aria-label="Reading period">
               <button type="button" data-value="daily">Today</button>
               <button type="button" data-value="weekly">Week</button>
@@ -70,6 +76,23 @@
       const c = kundli.chart;
       document.getElementById('subline').innerHTML =
         `<span class="chip">${c.ascendant.sign} lagna</span> <span class="chip">${c.moonSign} rashi</span> <span class="chip">${c.nakshatra.name} nakshatra</span>`;
+
+      // The lead card: what matters most to this person, ranked by the one power model.
+      (async () => {
+        const body = document.getElementById('priority-body');
+        try {
+          const r = await Vidhya.api('/api/findings/me');
+          if (!r.chosen.length) {
+            body.innerHTML = `<p class="soft" style="margin-top:0">Tell us what you care about and your chart is read for that first. Until then, here is what carries the most weight overall.</p>
+              ${r.top.slice(0, 3).map((f) => Vidhya.findingHtml(f, { why: false })).join('')}`;
+            return;
+          }
+          const names = r.sections.map((s, i) => `<span class="chip ${i === 0 ? 'gold' : ''}">${i + 1} · ${Vidhya.escapeHtml(s.name)}</span>`).join(' ');
+          body.innerHTML = `<p style="margin-top:0">${names}</p>${r.top.map((f) => Vidhya.findingHtml(f, { why: false })).join('')
+            || '<p class="muted">Nothing in your chart clears the bar for these topics right now.</p>'}`;
+          document.getElementById('priority-link').textContent = 'See all your priorities';
+        } catch (err) { body.innerHTML = '<p class="muted">Could not load your priorities.</p>'; }
+      })();
 
       const readingEl = document.getElementById('reading');
       async function loadReading(period) {

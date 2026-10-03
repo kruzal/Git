@@ -233,8 +233,60 @@ lib/
   numerology.js   driver, conductor, name numbers, Lo Shu
   western.js      tropical placements, degree aspects, balance
   indicators.js   ← the research boundary
+  findings.js     ← the reading boundary: one sentence, one topic, one power score
   interpret.js    rules → sections, tier filtering
   rules.js        the editable rule corpus
 docs/
   model.md        this file
 ```
+
+## 10. Findings and priority — one model for every reading
+
+Indicators are measurements. Findings are what a person reads. Every reading in the
+app, whatever page it appears on, is a ranked list of findings produced by
+`lib/findings.js`. There is no second path.
+
+```
+chart -> indicators -> FINDINGS -> (user focus) -> render
+```
+
+**The unit.** One finding is one sentence making one claim. Source prose is
+dismantled into sentences (`dismantle`). The first sentence of a source is its
+`claim`; later ones are `detail` and must stand on their own: a leading "It" is
+resolved to the planet, and anything that still names no subject is dropped and counted
+in `meta.droppedFootnotes`. Fewer sentences, each one intelligible alone.
+
+**The score.** `power` is 0-100 from five components, each 0-1, weighted in one place
+(`WEIGHTS`). Detail sentences are scaled by `ROLE_FACTOR`.
+
+| component | what it measures | source |
+|---|---|---|
+| salience 0.28 | distance of the planet strength from unremarkable (5.5); very strong and very weak both stand out | lib/strength |
+| house 0.18 | how much weight the house carries: kendra +0.3, trikona +0.3, upachaya +0.1, dusthana +0.1, base 0.4 | lib/bhava flags |
+| activation 0.28 | live now: running dasha lord 1.0, antardasha lord 0.7, house ruled by those 0.9 / 0.6, muntha house 0.7, slow-transit house 0.6, else 0.15 | lib/dasha, lib/varsha |
+| convergence 0.16 | occupants + aspects landing on the house, over 4 | lib/aspects |
+| actionability 0.10 | a remedy exists and applies (planet strained or weak, or running) | lib/lenses |
+
+Power never depends on who is looking. Changing a weight changes every reading at once,
+which is the point: a single model, tunable in one object, comparable across users.
+
+**Topics.** One taxonomy, `LIFE_AREAS`. A sentence belongs to the topics it names
+(lexicon in `TOPIC_TERMS`); only when it names none does it fall back to its house
+(`HOUSE_TOPICS`, derived from `LIFE_AREAS`). A footnote inherits its claim topics.
+`topicBasis` records which rule decided: `sentence`, `claim` or `house`.
+
+**Segmentation.** A person chooses up to three topics in order (`focus` table;
+`primary_topic` is an indexed column so users segment with plain SQL). Focus changes the
+selection and order only. Priority = power x relevance x focus weight (1, 0.8, 0.6).
+Quality gates: power x relevance >= `MIN_POWER`, at most `PER_TOPIC` per topic and
+`PER_SOURCE` sentences from one source. The same remedy is shown once per list.
+
+**Research.** `GET /api/findings/me?format=table` returns every sentence with its
+components and the indicator ids it rests on (`basis`), unfiltered. `MODEL_VERSION`
+must be bumped whenever weights or generators change, so scores from different versions
+are never pooled.
+
+**Not yet on this model.** The Today/Week/Month text on the home page still comes from
+`lib/horoscope.js` (a Moon-sign transit template). Moving it onto findings means emitting
+transit findings for the fast planets with `horizon: day|week|month`.
+
