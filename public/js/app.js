@@ -46,6 +46,7 @@ const Vidhya = (() => {
             ${link('year', 'My year')}
             ${link('dasha', 'Dasha')}
             ${link('panchang', 'Panchang')}
+            ${link('discover', 'Discover')}
             ${link('consult', 'Consult')}
             <a href="#" id="logout-link">Log out</a>` : ''}
           <button class="theme-toggle" type="button"></button>

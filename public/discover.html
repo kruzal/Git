@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vidhya — Discover</title>
+  <script>(function(){var t;try{t=localStorage.getItem('vidhya-theme')}catch(e){}document.documentElement.dataset.theme=t||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')})()</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header class="site-header"></header>
+  <main>
+    <section class="hero">
+      <p class="eyebrow">Discover</p>
+      <h1>Play with the sky</h1>
+      <p class="muted">See every planet in every house, put any two planets together, or move things around your own kundli and watch what changes.</p>
+    </section>
+
+    <div class="toolbar">
+      <div class="segmented" id="tabs" role="group" aria-label="What to explore">
+        <button type="button" data-value="houses">Houses</button>
+        <button type="button" data-value="conj">Conjunctions</button>
+        <button type="button" data-value="whatif">What if</button>
+      </div>
+    </div>
+
+    <!-- ------------------------------------------- planets in houses -->
+    <section class="disc-tab" id="tab-houses">
+      <div class="planet-row" id="planet-row" role="group" aria-label="Planet"></div>
+      <div class="split">
+        <div class="house-grid" id="house-grid"></div>
+        <aside class="preview-pane"><div class="card explorer-panel" id="house-detail" aria-live="polite"></div></aside>
+      </div>
+    </section>
+
+    <!-- ------------------------------------------------ conjunctions -->
+    <section class="disc-tab" id="tab-conj" hidden>
+      <div class="toolbar">
+        <div class="field" style="margin:0"><label for="conj-a">First planet</label><select id="conj-a"></select></div>
+        <div class="field" style="margin:0"><label for="conj-b">Second planet</label><select id="conj-b"></select></div>
+        <div class="field" style="margin:0"><label for="conj-h">In house</label><select id="conj-h"></select></div>
+      </div>
+      <div class="split">
+        <div class="card explorer-panel" id="conj-result" aria-live="polite"></div>
+        <aside class="preview-pane">
+          <div class="card card--quiet">
+            <h3 style="margin-top:0">Pairs with a classical reading</h3>
+            <div class="sig-list" id="conj-covered" style="margin-top:8px"></div>
+            <p class="hint">Any other pair still gets a reading, assembled from the two planets' natures and marked as such.</p>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ------------------------------------------------------ what if -->
+    <section class="disc-tab" id="tab-whatif" hidden>
+      <div class="chart-layout">
+        <div>
+          <div class="card"><div id="sim-chart"></div></div>
+          <p class="hint" id="sim-hint">Pick a planet, then click a house on the chart to move it there.</p>
+        </div>
+        <div class="stack">
+          <div class="card">
+            <h3 style="margin-top:0">Move a planet</h3>
+            <div class="planet-row" id="sim-planets" role="group" aria-label="Planet to move"></div>
+            <div class="field" id="deg-field">
+              <label for="sim-deg">Degree in its sign — <span id="deg-val"></span></label>
+              <input id="sim-deg" type="range" min="0" max="29.9" step="0.1">
+              <span class="hint">Degree changes the planet's age state (avastha) and how close it sits to the Sun.</span>
+            </div>
+            <div class="field" style="margin-bottom:0">
+              <label for="sim-lagna">Lagna (rising sign)</label>
+              <select id="sim-lagna"></select>
+              <span class="hint">Changing the lagna keeps every unmoved planet in its sign — like being born at a different hour — so they all change house.</span>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:16px">
+              <button class="btn ghost" type="button" id="sim-reset">Back to my real chart</button>
+            </div>
+          </div>
+          <div class="card explorer-panel" id="sim-diff" aria-live="polite"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/js/app.js"></script>
+  <script src="/js/chart.js"></script>
+  <script>
+    (async () => {
+      const me = await Vidhya.init();
+      if (!me) return;
+      const e = Vidhya.escapeHtml;
+      const ord = (n) => n + (['th','st','nd','rd'][(n % 100 - 20) % 10] || ['th','st','nd','rd'][n % 100] || 'th');
+      const STATE_BAND = { flowing: 'strong', mixed: 'working', 'needs care': 'strained' };
+      const STATE_RANK = { 'needs care': 0, mixed: 1, flowing: 2 };
+      const stateBand = (st) => `<span class="band band--${STATE_BAND[st]}">${st}</span>`;
+
+      const lib = await Vidhya.api('/api/discover/library');
+      const glyph = Object.fromEntries(lib.planets.map((p) => [p.name, p.glyph]));
+      const state = { tab: 'houses', planet: 'Sun', house: lib.mine.Sun || 1, a: 'Moon', b: 'Jupiter', h: 0, pick: 'Jupiter', moves: {}, lagna: null, base: null, sim: null };
+
+      // ---------------------------------------------------------- tabs
+      function showTab(tab) {
+        state.tab = tab;
+        ['houses', 'conj', 'whatif'].forEach((t) => { document.getElementById('tab-' + t).hidden = t !== tab; });
+        if (tab === 'conj' && !document.getElementById('conj-result').innerHTML) loadConj();
+        if (tab === 'whatif' && !state.sim) simulate();
+      }
+      Vidhya.bindSegmented(document.getElementById('tabs'), state.tab, showTab);
+
+      // ------------------------------------------- planets in houses
+      const chip = (p, pressed, extra = '') => `<button type="button" class="planet-chip" data-planet="${p.name}" aria-pressed="${pressed}">
+        <span class="g">${p.glyph}</span>${e(p.name)}${p.system === 'western' ? '<span class="sys">western</span>' : ''}${extra}</button>`;
+
+      function renderPlanetRow() {
+        const row = document.getElementById('planet-row');
+        row.innerHTML = lib.planets.map((p) => chip(p, p.name === state.planet)).join('');
+        row.querySelectorAll('.planet-chip').forEach((b) => b.addEventListener('click', () => {
+          state.planet = b.dataset.planet;
+          state.house = lib.mine[state.planet] || state.house;
+          renderPlanetRow(); renderGrid(); renderDetail();
+        }));
+      }
+
+      function renderGrid() {
+        const grid = document.getElementById('house-grid');
+        grid.innerHTML = lib.placements[state.planet].map((pl) => `
+          <button type="button" class="house-tile ${pl.house === state.house ? 'is-active' : ''}" data-house="${pl.house}">
+            ${lib.mine[state.planet] === pl.house ? '<span class="you">yours</span>' : ''}
+            <span class="n">${pl.house}</span>
+            <span class="t">${e(state.planet)} in ${ord(pl.house)}</span>
+            <span class="s">${e(pl.house_.name)} · ${e(pl.short)}</span>
+          </button>`).join('');
+        grid.querySelectorAll('.house-tile').forEach((t) => t.addEventListener('click', () => {
+          state.house = Number(t.dataset.house); renderGrid(); renderDetail();
+        }));
+      }
+
+      function renderDetail() {
+        const pl = lib.placements[state.planet][state.house - 1];
+        const kw = pl.keywords;
+        const sig = pl.significator;
+        const mine = lib.mine[state.planet] === pl.house;
+        document.getElementById('house-detail').innerHTML = `
+          <div class="panel-head"><h2>${pl.glyph} ${e(pl.headline)}</h2>${mine ? '<span class="chip gold">in your chart</span>' : ''}</div>
+          ${pl.house_.tags ? `<div class="hc-tags" style="margin:10px 0">${pl.house_.tags.map((t) => `<span class="tag">${e(t)}</span>`).join('')}</div>` : ''}
+          <p class="reading-text" style="font-size:1.03rem">${e(pl.text)}</p>
+          ${kw ? `<h3>At its best</h3><div class="trait-row">${kw.gifts.map((g) => `<span class="trait gift">${e(g)}</span>`).join('')}</div>
+            <h3>The edge to watch</h3><div class="trait-row">${kw.edges.map((g) => `<span class="trait edge">${e(g)}</span>`).join('')}</div>` : ''}
+          ${pl.notes.length ? `<h3>Worth knowing</h3>${pl.notes.map((n) => `<p class="reading-text">${e(n)}</p>`).join('')}` : ''}
+          ${pl.aspects.length ? `<h3>From here it looks at</h3><ul class="fact-list">${pl.aspects.map((a) =>
+            `<li><span>${ord(a.count)} aspect</span><strong>${ord(a.house)} — ${e(a.name)}</strong></li>`).join('')}</ul>` : ''}
+          ${sig ? `<h3>As a significator</h3><p class="reading-text${sig.tier === 'guarded' ? ' soft' : ''}">${e(sig.text)}</p>` : ''}
+          ${mine ? `<p class="hint">This is your real placement. Your own sign and strength change how it lands — see it on <a href="/kundli">My kundli</a>.</p>`
+            : `<p class="hint">A reference reading: in a real chart the sign, strength and aspects change how it lands. Try it in <a href="#" id="try-whatif">What if</a>.</p>`}
+          <p class="hint">Sources: Vidhya's own tables${kw ? ', gifts and edges from S-CL-01 (chartlune.com)' : ''}${sig ? ', significator from S-AS-01' : ''}.</p>`;
+        document.getElementById('try-whatif')?.addEventListener('click', (ev) => {
+          ev.preventDefault();
+          if (pl.system !== 'vedic') return;
+          state.pick = state.planet; state.moves[state.planet] = { house: pl.house };
+          document.querySelector('#tabs button[data-value="whatif"]').click();
+          simulate();
+        });
+      }
+
+      // -------------------------------------------------- conjunctions
+      const opts = (sel) => lib.planets.map((p) => `<option value="${p.name}" ${p.name === sel ? 'selected' : ''}>${p.glyph} ${p.name}</option>`).join('');
+      document.getElementById('conj-a').innerHTML = opts(state.a);
+      document.getElementById('conj-b').innerHTML = opts(state.b);
+      document.getElementById('conj-h').innerHTML = '<option value="0">Any house</option>'
+        + Array.from({ length: 12 }, (_, i) => `<option value="${i + 1}">${ord(i + 1)} — ${e(lib.placements.Sun[i].house_.name)}</option>`).join('');
+      document.getElementById('conj-covered').innerHTML = lib.covered.map((k) =>
+        `<button type="button" class="planet-chip" data-pair="${k}" style="padding:4px 11px;font-size:0.82rem">${k.split('+').map((p) => glyph[p]).join(' ')} ${e(k.replace('+', ' + '))}</button>`).join('');
+      document.querySelectorAll('#conj-covered [data-pair]').forEach((b) => b.addEventListener('click', () => {
+        [state.a, state.b] = b.dataset.pair.split('+');
+        document.getElementById('conj-a').value = state.a; document.getElementById('conj-b').value = state.b;
+        loadConj();
+      }));
+      ['conj-a', 'conj-b', 'conj-h'].forEach((id) => document.getElementById(id).addEventListener('change', () => {
+        state.a = document.getElementById('conj-a').value; state.b = document.getElementById('conj-b').value;
+        state.h = Number(document.getElementById('conj-h').value); loadConj();
+      }));
+
+      async function loadConj() {
+        const box = document.getElementById('conj-result');
+        if (state.a === state.b) { box.innerHTML = '<p class="muted">Pick two different planets.</p>'; return; }
+        const c = await Vidhya.api(`/api/discover/conjunction?a=${state.a}&b=${state.b}${state.h ? '&house=' + state.h : ''}`);
+        const yours = lib.mine[state.a] && lib.mine[state.a] === lib.mine[state.b];
+        box.innerHTML = c.impossible
+          ? `<h2>${glyph[state.a]} ${e(state.a)} + ${glyph[state.b]} ${e(state.b)}</h2><p class="reading-text">${e(c.text)}</p>`
+          : `<div class="panel-head"><h2>${glyph[c.pair[0]]} ${e(c.pair[0])} + ${glyph[c.pair[1]]} ${e(c.pair[1])}${c.name ? ' — ' + e(c.name) : ''}</h2>
+              <span class="chip${c.source === 'corpus' ? ' gold' : ''}">${c.source === 'corpus' ? 'classical reading' : 'composed'}</span></div>
+            ${c.house ? `<p class="muted">in the ${ord(c.house)} house</p>` : ''}
+            <p class="reading-text${c.tier === 'guarded' ? ' soft' : ''}" style="font-size:1.03rem">${e(c.text)}</p>
+            ${c.tier === 'guarded' ? '<p class="hint">A tendency to watch for, not a verdict.</p>' : ''}
+            ${c.notes.map((n) => `<p class="reading-text">${e(n)}</p>`).join('')}
+            ${yours ? `<p class="hint"><strong>You have this:</strong> both sit in your ${ord(lib.mine[state.a])} house.</p>` : ''}
+            ${c.source === 'composed' ? '<p class="hint">No classical reading covers this pair, so this is assembled from the two planets’ natures.</p>' : ''}`;
+      }
+
+      // ------------------------------------------------------- what if
+      const GRAHAS = lib.planets.filter((p) => p.system === 'vedic');
+      const lagnaEl = document.getElementById('sim-lagna');
+      const degEl = document.getElementById('sim-deg');
+
+      async function simulate() {
+        const r = await Vidhya.api('/api/discover/simulate', { method: 'POST', body: { lagna: state.lagna, moves: state.moves } });
+        state.base = r.base; state.sim = r.sim;
+        if (!lagnaEl.options.length) {
+          lagnaEl.innerHTML = lib.signs.map((s, i) => `<option value="${i}">${e(s)}${i === r.base.chart.ascendant.signIndex ? ' (yours)' : ''}</option>`).join('');
+        }
+        lagnaEl.value = String(r.sim.chart.ascendant.signIndex);
+        renderSim();
+      }
+
+      function renderSimPlanets() {
+        const row = document.getElementById('sim-planets');
+        row.innerHTML = GRAHAS.map((p) => chip(p, p.name === state.pick, state.moves[p.name] ? ' <span class="sys">moved</span>' : '')).join('');
+        row.querySelectorAll('.planet-chip').forEach((b) => b.addEventListener('click', () => { state.pick = b.dataset.planet; renderSim(); }));
+      }
+
+      function renderSim() {
+        const { base, sim } = state;
+        const moved = sim.chart.planets.filter((p) => p.moved).map((p) => p.name);
+        const picked = sim.chart.planets.find((p) => p.name === state.pick);
+        document.getElementById('sim-chart').innerHTML = VidhyaChart.northIndian(sim.chart, {
+          selected: picked?.house, strengths: sim.strengths, lit: { planets: [...moved, state.pick] },
+        });
+        document.querySelectorAll('#sim-chart .cell').forEach((cell) => {
+          const go = () => {
+            state.moves[state.pick] = { ...(state.moves[state.pick] || {}), house: Number(cell.dataset.house) };
+            simulate();
+          };
+          cell.addEventListener('click', go);
+          cell.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); go(); } });
+        });
+        document.getElementById('sim-hint').textContent = `${state.pick} is selected. Click any house to move it there.`;
+        degEl.value = picked.degree.toFixed(1);
+        document.getElementById('deg-val').textContent = `${picked.degree.toFixed(1)}° ${picked.sign}`;
+        renderSimPlanets();
+        renderDiff();
+      }
+
+      function renderDiff() {
+        const { base, sim } = state;
+        const out = [];
+        const changedLagna = base.chart.ascendant.signIndex !== sim.chart.ascendant.signIndex;
+        sim.warnings.forEach((w) => out.push(`<div class="sky-warning"><strong>Not a possible sky.</strong> ${e(w)} The reading below still works it through.</div>`));
+
+        const movedPlanets = sim.chart.planets.filter((p) => {
+          const b = base.chart.planets.find((x) => x.name === p.name);
+          return p.house !== b.house || Math.abs(p.degree - b.degree) > 0.05;
+        });
+        if (!movedPlanets.length && !changedLagna) {
+          document.getElementById('sim-diff').innerHTML = '<h2>Your real chart</h2><p class="reading-text">Nothing has been changed yet. Pick a planet and click a house, drag its degree, or try another lagna — this panel shows exactly what moves.</p>';
+          return;
+        }
+        out.push(`<h2>What changed</h2>`);
+        if (changedLagna) out.push(`<p class="reading-text">Lagna ${e(base.chart.ascendant.sign)} → <strong>${e(sim.chart.ascendant.sign)}</strong>. Every house is now counted from ${e(sim.chart.ascendant.sign)}, so planets that stayed in their sign have changed house.</p>`);
+
+        out.push('<h3>Planets</h3><ul class="diff-list">' + movedPlanets.map((p) => {
+          const b = base.chart.planets.find((x) => x.name === p.name);
+          const sb = base.strengths[p.name], ss = sim.strengths[p.name];
+          const dir = ss.score > sb.score + 0.05 ? 'up' : ss.score < sb.score - 0.05 ? 'down' : '';
+          return `<li class="${dir}"><strong>${glyph[p.name]} ${e(p.name)}: ${ord(b.house)} → ${ord(p.house)}</strong>
+            <span>${e(b.sign)} → ${e(p.sign)} · strength ${sb.score} → <strong>${ss.score}</strong> (${e(ss.band)}) · ${e(ss.dignity)} · ${e(ss.avastha)}${ss.combust ? ' · combust' : ''}</span>
+            <span class="why">${e(sim.placements[p.name])}</span></li>`;
+        }).join('') + '</ul>');
+
+        const houseChanges = sim.houses.filter((h, i) => h.state !== base.houses[i].state);
+        out.push('<h3>Houses</h3>' + (houseChanges.length ? '<ul class="diff-list">' + houseChanges.map((h) => {
+          const before = base.houses[h.house - 1].state;
+          return `<li class="${STATE_RANK[h.state] > STATE_RANK[before] ? 'up' : 'down'}"><strong>${ord(h.house)} — ${e(h.name)}: ${before} → ${h.state}</strong>${h.top ? `<span class="why">${e(h.top)}</span>` : ''}</li>`;
+        }).join('') + '</ul>' : '<p class="soft">No house changed its overall state.</p>'));
+
+        const ids = (xs) => new Set(xs.map((x) => x.id));
+        const gained = sim.yogas.filter((y) => !ids(base.yogas).has(y.id));
+        const lost = base.yogas.filter((y) => !ids(sim.yogas).has(y.id));
+        if (gained.length || lost.length) {
+          out.push('<h3>Yogas</h3><ul class="diff-list">'
+            + gained.map((y) => `<li class="up"><strong>+ ${e(y.name)}</strong><span class="why">${e(y.text)}</span></li>`).join('')
+            + lost.map((y) => `<li class="down"><strong>− ${e(y.name)}</strong><span class="why">no longer formed</span></li>`).join('') + '</ul>');
+        }
+        const cKey = (c) => c.id + '@' + c.house;
+        const cGained = sim.conjunctions.filter((c) => !base.conjunctions.some((b) => cKey(b) === cKey(c)));
+        const cLost = base.conjunctions.filter((c) => !sim.conjunctions.some((s) => cKey(s) === cKey(c)));
+        if (cGained.length || cLost.length) {
+          out.push('<h3>Conjunctions</h3><ul class="diff-list">'
+            + cGained.map((c) => `<li class="up"><strong>+ ${e(c.pair.join(' + '))}${c.name ? ' — ' + e(c.name) : ''} in the ${ord(c.house)}</strong><span class="why">${e(c.text)}</span></li>`).join('')
+            + cLost.map((c) => `<li class="down"><strong>− ${e(c.pair.join(' + '))}${c.name ? ' — ' + e(c.name) : ''}</strong><span class="why">no longer together</span></li>`).join('') + '</ul>');
+        }
+        if (base.karma.lordHouse !== sim.karma.lordHouse || base.karma.lord !== sim.karma.lord) {
+          out.push(`<h3>Karma</h3><p class="reading-text">Your 10th-house lord is now ${e(sim.karma.lord)} in the ${ord(sim.karma.lordHouse)}, so work flows into <strong>${e(sim.karma.flowsInto.toLowerCase())}</strong> instead of ${e(base.karma.flowsInto.toLowerCase())}.</p>`);
+        }
+        out.push('<p class="hint">This is a sandbox. Your real chart is fixed by your birth moment — use this to understand why your chart reads the way it does.</p>');
+        document.getElementById('sim-diff').innerHTML = out.join('');
+      }
+
+      degEl.addEventListener('input', () => { document.getElementById('deg-val').textContent = `${Number(degEl.value).toFixed(1)}°`; });
+      degEl.addEventListener('change', () => {
+        const p = state.sim.chart.planets.find((x) => x.name === state.pick);
+        state.moves[state.pick] = { house: state.moves[state.pick]?.house ?? p.house, degree: Number(degEl.value) };
+        simulate();
+      });
+      lagnaEl.addEventListener('change', () => {
+        const v = Number(lagnaEl.value);
+        state.lagna = v === state.base.chart.ascendant.signIndex ? null : v;
+        simulate();
+      });
+      document.getElementById('sim-reset').addEventListener('click', () => { state.moves = {}; state.lagna = null; simulate(); });
+
+      renderPlanetRow(); renderGrid(); renderDetail();
+    })();
+  </script>
+</body>
+</html>

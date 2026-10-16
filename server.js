@@ -22,6 +22,11 @@ const Submodels = require('./lib/submodels');
 const Intent = require('./lib/intent');
 const Actions = require('./lib/actions');
 const { REMEDIES } = require('./lib/lenses');
+const { relations } = require('./lib/relations');
+const { janma } = require('./lib/janma');
+const Muhurta = require('./lib/muhurta');
+const Significators = require('./lib/significators');
+const Discover = require('./lib/discover');
 
 const app = express();
 const PORT = process.env.PORT || 3100;
@@ -199,9 +204,11 @@ app.get('/api/kundli/me', requireUser, requireProfile, (req, res) => {
 // Everything the chart page needs beyond the core Vedic reading: the other
 // systems, and the lenses that ask different questions of the same chart.
 app.get('/api/lenses/me', requireUser, requireProfile, (req, res) => {
-  const { place, utc, chart } = chartFor(req.profile);
+  const { place, utc, chart, dasha } = chartFor(req.profile);
   const strengths = evaluateAll(chart);
   const arudha = arudhaLagna(chart);
+  const rel = relations(chart, strengths);
+  const westernChart = birthChart(utc, place.lat, place.lon, 'western');
 
   res.json({
     karakas: karakas(chart),
@@ -209,7 +216,15 @@ app.get('/api/lenses/me', requireUser, requireProfile, (req, res) => {
     lifeAreas: LIFE_AREAS.map((a) => lifeArea(chart, strengths, a.key)),
     remedies: remedies(chart, strengths),
     numerology: numerologyProfile(req.profile.birth_date, req.profile.full_name),
-    western: westernProfile(birthChart(utc, place.lat, place.lon, 'western')),
+    western: westernProfile(westernChart),
+    relations: rel,
+    janma: janma(chart, strengths, rel, dasha, utc, place),
+    significators: {
+      sources: Object.values(Significators.SOURCES),
+      houses: Array.from({ length: 12 }, (_, i) => Significators.forHouse(i + 1)),
+      activeVedic: Significators.active(chart),
+      activeWestern: Significators.active(westernChart),
+    },
     devata: devataReport(strengths, timeline(chart.planets.find((p) => p.name === 'Moon').longitude, utc).current?.lord),
   });
 });
@@ -239,6 +254,51 @@ app.get('/api/panchang', requireUser, (req, res) => {
   const iso = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date || '') ? req.query.date : new Date().toISOString().slice(0, 10);
   const at = localToUtc(iso, '12:00', place.tz);
   res.json({ date: iso, place: `${place.name}, ${place.country}`, timezone: place.tz, ...panchang(at, place.lat, place.lon) });
+});
+
+// The best windows in the coming weeks for one kind of event, judged for this person.
+app.get('/api/muhurta', requireUser, requireProfile, (req, res) => {
+  const eventKey = Muhurta.EVENTS[req.query.event] ? req.query.event : 'start';
+  const days = Math.min(60, Math.max(7, Number(req.query.days) || 30));
+  const place = CITIES.find((c) => c.name === (req.query.city || req.profile.city)) || CITIES[0];
+  const { chart } = chartFor(req.profile);
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: place.tz });
+  const result = Muhurta.findMuhurta({
+    eventKey, days, place,
+    from: localToUtc(today, '00:00', place.tz),
+    natal: { nakshatraIndex: chart.nakshatra.index, moonSignIndex: chart.planets.find((p) => p.name === 'Moon').signIndex },
+  });
+  const slim = ({ start, end, date, choghadiya, abhijit, score, good, bad, limbs, tara }) =>
+    ({ start, end, date, choghadiya, abhijit, score, good, bad, tara, nakshatra: limbs.nakshatra, tithi: limbs.tithi.label });
+  res.json({
+    event: result.event, days, place: `${place.name}, ${place.country}`, timezone: place.tz,
+    events: Object.entries(Muhurta.EVENTS).map(([key, e]) => ({ key, name: e.name })),
+    best: result.best.map(slim), avoid: result.avoid.map(slim),
+  });
+});
+
+// ---------- discover: the open playground ----------
+const discoverLibrary = Discover.library();
+
+app.get('/api/discover/library', requireUser, requireProfile, (req, res) => {
+  const { chart } = chartFor(req.profile);
+  res.json({ ...discoverLibrary, mine: Object.fromEntries(chart.planets.map((p) => [p.name, p.house])) });
+});
+
+app.get('/api/discover/conjunction', requireUser, (req, res) => {
+  const names = discoverLibrary.planets.map((p) => p.name);
+  const { a, b } = req.query;
+  const house = Number(req.query.house);
+  if (!names.includes(a) || !names.includes(b)) return res.status(400).json({ error: 'Pick two planets.' });
+  res.json(Discover.conjunction(a, b, house >= 1 && house <= 12 ? house : null));
+});
+
+// Rebuild the user's own chart with changes and return both readings, so the page can diff them.
+app.post('/api/discover/simulate', requireUser, requireProfile, (req, res) => {
+  const { chart } = chartFor(req.profile);
+  const lagna = Number.isInteger(req.body?.lagna) ? req.body.lagna : null;
+  const moves = req.body?.moves && typeof req.body.moves === 'object' ? req.body.moves : {};
+  res.json({ base: Discover.snapshot(chart), sim: Discover.snapshot(Discover.rebuild(chart, { lagna, moves })) });
 });
 
 // ---------- consultations ----------

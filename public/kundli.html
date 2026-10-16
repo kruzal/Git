@@ -96,6 +96,25 @@
       const e = Vidhya.escapeHtml;
       const deg = (d) => `${Math.floor(d)}°${String(Math.floor((d % 1) * 60)).padStart(2, '0')}′`;
       const ord = (n) => n + (['th','st','nd','rd'][(n % 100 - 20) % 10] || ['th','st','nd','rd'][n % 100] || 'th');
+      const STATE_BAND = { flowing: 'strong', mixed: 'working', 'needs care': 'strained' };
+      const stateBand = (st) => `<span class="band band--${STATE_BAND[st]}">${st}</span>`;
+      const factorList = (list) => '<ul class="sig-list">' + list.map((f) => '<li>' + e(f.text) + '</li>').join('') + '</ul>';
+      const BASIS = { karaka: 'classical karaka', 'natural-ruler': 'natural sign ruler', 'dig-bala': 'directional strength', unattested: 'no classical basis' };
+      const sigRows = (n, active, outerNote) => {
+        const S = L.significators, f = S.houses[n - 1], src = S.sources[0];
+        const live = new Set(active.filter((a) => a.house === n).map((a) => a.planet));
+        return '<h3>Significators</h3><ul class="fact-list">'
+          + '<li><span>Classical karaka (Parashari)</span><strong>' + e(f.classical.join(', ')) + '</strong></li></ul>'
+          + '<ul class="stack" style="list-style:none;padding:0;margin:8px 0">' + f.sourced.map((s) => '<li class="aspect-row' + (live.has(s.planet) ? ' is-protective' : '') + '">'
+            + '<div class="ar-head"><strong>' + e(s.planet) + ' — ' + e(s.theme) + '</strong><span class="chip">' + e(BASIS[s.basis]) + '</span></div>'
+            + '<p class="reading-text' + (s.tier === 'guarded' ? ' soft' : '') + '">' + e(s.text) + '</p>'
+            + (live.has(s.planet) ? '<p class="hint">' + e(s.planet) + ' actually sits here in your chart, so this applies to you.</p>'
+              : outerNote && ['Uranus', 'Neptune', 'Pluto'].includes(s.planet) ? '<p class="hint">' + outerNote + '</p>' : '')
+            + '</li>').join('') + '</ul>'
+          + (f.disagreement.missingClassical.length ? '<p class="hint">This source leaves out the classical karaka' + (f.disagreement.missingClassical.length > 1 ? 's ' : ' ')
+            + e(f.disagreement.missingClassical.join(', ').replace(/, ([^,]*)$/, ' and $1')) + '. Both are kept; neither overrides the other.</p>' : '')
+          + '<p class="hint">Source ' + e(src.id) + ': “' + e(src.title) + '”, ' + e(src.publisher) + ', ' + e(src.date) + '. Claims with no classical basis are shown in a softer tone and carry low weight.</p>';
+      };
       const band = (b, s) => `<span class="band band--${b}">${b}${s !== undefined ? ` · ${s}/10` : ''}</span>`;
 
       async function load() {
@@ -184,11 +203,11 @@
 
       // ---------------------------------------------- lenses per system
       const LENSES = {
-        vedic: [['planets', 'Grahas'], ['houses', 'Bhavas'], ['areas', 'Life areas'],
+        vedic: [['planets', 'Grahas'], ['houses', 'Bhavas'], ['relations', 'Relations'], ['janma', 'Birth chain'], ['areas', 'Life areas'],
           ['karakas', 'Karakas'], ['patterns', 'Patterns'], ['image', 'Public image'],
           ['remedies', 'Remedies'], ['devata', 'Devata'], ['timing', 'Timing']],
         western: [['big3', 'Big three'], ['wplacements', 'Placements'], ['whouses', 'Houses'], ['waspects', 'Aspects'], ['balance', 'Balance']],
-        numbers: [['core', 'Driver & Conductor'], ['name', 'Name number'], ['loshu', 'Lo Shu grid']],
+        numbers: [['core', 'Driver, Conductor & Life path'], ['name', 'Name number'], ['loshu', 'Lo Shu grid']],
       };
 
       function renderLensBar() {
@@ -205,6 +224,18 @@
           meta: `${p.sign} · h${p.house}`, badge: D.strengths[p.planet].band })),
         houses: () => D.houses.map((h) => ({ id: h.house, label: `${ord(h.house)} — ${h.name}`,
           meta: `${h.sign}${h.occupants.length ? ' · ' + h.occupants.join(', ') : ' · empty'}` })),
+        relations: () => {
+          const R = L.relations;
+          return [
+            { id: 'good', label: 'What is already good', meta: `${R.alreadyGood.length} houses flowing` },
+            { id: 'karma', label: 'Where your karma flows', meta: `10th lord in h${R.karma.lordHouse}`, badge: STATE_BAND[R.karma.state] },
+            ...R.axes.map((a) => ({ id: 'a:' + a.id, label: a.name, meta: `${ord(a.pair[0])} ↔ ${ord(a.pair[1])}` })),
+            ...R.exchanges.map((x) => ({ id: x.id, label: `${x.planets.join(' ⇄ ')}`, meta: `${x.kind} parivartana` })),
+            ...R.yogas.map((y) => ({ id: y.id, label: y.name, meta: `${y.planets.join(' + ')} · ${y.link}` })),
+          ];
+        },
+        janma: () => [{ id: 'chain', label: 'The chain', meta: 'karma → ghadi' },
+          ...L.janma.levels.map((lv, i) => ({ id: lv.id, label: `${i + 1}. ${lv.name}`, meta: lv.sanskrit }))],
         areas: () => L.lifeAreas.map((a) => ({ id: a.key, label: a.name,
           meta: `houses ${a.houses.join(', ')}`, badge: a.strongest?.band })),
         karakas: () => L.karakas.map((k) => ({ id: k.key, label: k.name, meta: `${k.planet} · h${k.house}` })),
@@ -235,7 +266,8 @@
           { id: 'ruler', label: 'Chart ruler', meta: L.western.chartRuler.traditional },
           { id: 'love', label: 'Love language', meta: L.western.loveLanguage.element }],
         core: () => [{ id: 'driver', label: 'Driver (Mulank)', meta: `${L.numerology.driver.value} · ${L.numerology.driver.planet}` },
-          { id: 'conductor', label: 'Conductor (Bhagyank)', meta: `${L.numerology.conductor.value} · ${L.numerology.conductor.planet}` }],
+          { id: 'conductor', label: 'Conductor (Bhagyank)', meta: `${L.numerology.conductor.value} · ${L.numerology.conductor.planet}` },
+          { id: 'lifePath', label: 'Life path', meta: `${L.numerology.lifePath.value}${L.numerology.lifePath.master ? ' master' : ''} · ${L.numerology.lifePath.planet}` }],
         name: () => [{ id: 'chaldean', label: 'Chaldean', meta: `value ${L.numerology.name.chaldean.value}` },
           { id: 'pythagorean', label: 'Pythagorean', meta: `value ${L.numerology.name.pythagorean.value}` }],
         loshu: () => [{ id: 'grid', label: 'Your grid', meta: '3×3 magic square' }],
@@ -294,6 +326,15 @@
             + h.tags.map((t) => '<span class="tag">' + e(t) + '</span>').join('') + '</div>');
           parts.push('<p class="muted">' + e(h.area) + '</p>');
           parts.push('<p class="reading-text">' + e(h.chain) + '</p>');
+          const v = L.relations.houses[h.house - 1];
+          parts.push('<h3>How it is doing ' + stateBand(v.state) + '</h3>');
+          if (v.supports.length) parts.push('<p class="eyebrow" style="margin:8px 0 2px">Already working for you</p>' + factorList(v.supports));
+          if (v.cautions.length) parts.push('<p class="eyebrow" style="margin:8px 0 2px">Needs care</p>' + factorList(v.cautions));
+          if (v.sustainedBy.house !== h.house) {
+            parts.push('<p class="hint">Held up by your ' + ord(v.sustainedBy.house) + ' (' + e(v.sustainedBy.name.toLowerCase())
+              + '), the ' + ord(h.house) + ' from the ' + ord(h.house) + '. That house is ' + e(v.sustainedBy.state) + ', so '
+              + (v.sustainedBy.state === 'needs care' ? 'shoring it up helps this one too.' : 'it gives this one something to stand on.') + '</p>');
+          }
 
           parts.push('<h3>What this house covers</h3><ul class="sig-list">'
             + h.significations.map((x) => '<li>' + e(x) + '</li>').join('') + '</ul>');
@@ -328,6 +369,8 @@
               + '<li><span>Activity in this chart</span><strong>' + h.activity + ' influence'
               + (h.activity === 1 ? '' : 's') + '</strong></li></ul>');
 
+            parts.push(sigRows(h.house, L.significators.activeVedic, 'The outer planets belong to the Western system; the Vedic chart does not use them.'));
+
             parts.push('<h3>It answers</h3><ul class="sig-list">'
               + h.asks.map((q) => '<li>' + e(q) + '</li>').join('') + '</ul>');
             parts.push('<p class="hint">' + e(h.note) + '</p>');
@@ -340,6 +383,51 @@
           }
 
           html = parts.join('');
+        }
+
+        if (state.lens === 'relations') {
+          const R = L.relations;
+          const houseRow = (x) => '<li><span>' + ord(x.house) + ' — ' + e(x.name) + '</span><strong>' + e(x.because || '') + '</strong></li>';
+          if (P === 'good') {
+            html = '<h2>What is already good</h2>'
+              + '<p class="reading-text">These houses are already supported in your chart. Each line names the reason, so nothing here is flattery. Build from these; they hold weight.</p>'
+              + (R.alreadyGood.length ? '<ul class="fact-list">' + R.alreadyGood.map(houseRow).join('') + '</ul>' : '<p class="soft">No house is clearly flowing; most are mixed, which means effort decides them.</p>')
+              + (R.needsCare.length ? '<h3>Where effort pays most</h3><ul class="fact-list">' + R.needsCare.map(houseRow).join('') + '</ul>' : '');
+          } else if (P === 'karma') {
+            const k = R.karma;
+            html = '<div class="panel-head"><h2>Where your karma flows</h2>' + stateBand(k.state) + '</div>'
+              + k.lines.map((l) => '<p class="reading-text">' + e(l) + '</p>').join('')
+              + (brief ? '' : (k.supports.length ? '<h3>Supporting the 10th</h3>' + factorList(k.supports) : '')
+                + (k.cautions.length ? '<h3>Pressing on the 10th</h3>' + factorList(k.cautions) : ''));
+          } else if (String(P).startsWith('a:')) {
+            const a = R.axes.find((x) => 'a:' + x.id === P);
+            html = '<div class="panel-head"><h2>' + e(a.name) + '</h2><span class="chip">' + ord(a.pair[0]) + ' ↔ ' + ord(a.pair[1]) + '</span></div>'
+              + '<p class="muted">' + e(a.question) + '</p>'
+              + '<ul class="fact-list">' + a.ends.map((end) => '<li><span>' + ord(end.house) + ' — ' + e(end.name)
+                + (end.occupants.length ? ' · ' + e(end.occupants.join(', ')) : '') + '</span><strong>' + stateBand(end.state) + '</strong></li>').join('') + '</ul>'
+              + a.lines.map((l) => '<p class="reading-text">' + e(l) + '</p>').join('');
+          } else {
+            const item = [...R.exchanges, ...R.yogas].find((x) => x.id === P);
+            if (item) html = '<div class="panel-head"><h2>' + e(item.name || item.planets.join(' ⇄ ')) + '</h2><span class="chip">houses '
+              + item.houses.join(' & ') + '</span></div><p class="reading-text">' + e(item.text) + '</p>'
+              + (tech ? '<p class="hint">Functional nature for your lagna: ' + item.planets.map((pl) => e(pl) + ' — ' + e(R.natures[pl].nature)
+                + ' (rules ' + (R.natures[pl].ruled.map(ord).join(', ') || 'no sign') + ')').join('; ') + '</p>' : '');
+          }
+        }
+
+        if (state.lens === 'janma') {
+          const J = L.janma;
+          if (P === 'chain') {
+            html = '<h2>The chain</h2><p class="reading-text" style="font-size:1.03rem">' + e(J.summary) + '</p>'
+              + '<ol class="chain-list">' + J.levels.map((lv) => '<li><strong>' + e(lv.name) + ' · ' + e(lv.sanskrit) + '</strong><span>'
+                + e(lv.decides) + '</span></li>').join('') + '</ol>'
+              + '<p class="hint">1 ghati = 24 minutes, 60 to a day · 1 pala = 24 seconds, 60 to a ghati.</p>';
+          } else {
+            const lv = J.levels.find((x) => x.id === P);
+            html = '<div class="panel-head"><h2>' + e(lv.name) + ' — ' + e(lv.sanskrit) + '</h2><span class="chip">' + e(lv.decides) + '</span></div>'
+              + '<ul class="fact-list">' + lv.facts.map((f) => '<li><span>' + e(f.label) + '</span><strong>' + e(f.value) + '</strong></li>').join('') + '</ul>'
+              + (brief ? lv.lines.slice(0, 1) : lv.lines).map((l) => '<p class="reading-text">' + e(l) + '</p>').join('');
+          }
         }
 
         if (state.lens === 'areas') {
@@ -478,7 +566,8 @@
               <li><span>Traditional ruler</span><strong>${e(h.traditionalRuler)}</strong></li>
               ${h.naturalRuler !== h.traditionalRuler ? `<li><span>Modern co-ruler</span><strong>${e(h.naturalRuler)}</strong></li>` : ''}
             </ul>
-            <p class="hint">Natural houses describe the archetype; your own cusp sign (${e(h.cuspSign)}) shows how it actually shows up for you.</p>`;
+            <p class="hint">Natural houses describe the archetype; your own cusp sign (${e(h.cuspSign)}) shows how it actually shows up for you.</p>
+            ${state.depth === 'brief' ? '' : sigRows(h.n, L.significators.activeWestern, 'Uranus, Neptune and Pluto are not plotted on your chart yet, so this is reference only.')}`;
         }
         if (state.lens === 'waspects') {
           const a = L.western.aspects[Number(P)];
@@ -525,7 +614,8 @@
           html = `<div class="panel-head"><h2>${e(n.label)} — ${n.value}</h2><span class="chip gold">${e(n.planet)}</span></div>
             <p class="muted">from ${e(n.from)}</p>
             <p class="reading-text" style="font-size:1.03rem">${e(n.trait)}</p>
-            <p class="reading-text">Number ${n.value} is ${e(n.planet)}. In your chart ${e(n.planet)} is
+            ${n.master ? `<p class="reading-text soft">Your Conductor reduces this to ${n.root}; the Western life path keeps the master number ${n.value}. On the Vedic side it still reads through ${e(n.planet)}.</p>` : ''}
+            <p class="reading-text">Number ${n.root || n.value} is ${e(n.planet)}. In your chart ${e(n.planet)} is
               <strong>${e(D.strengths[n.planet].band)}</strong> at ${D.strengths[n.planet].score}/10, in house
               ${c.planets.find((p) => p.name === n.planet).house} — which is where this number actually plays out for you.</p>
             ${L.numerology.resonance ? `<p class="reading-text"><strong>${e(L.numerology.resonance)}</strong></p>` : ''}

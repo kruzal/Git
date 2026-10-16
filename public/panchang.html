@@ -29,6 +29,16 @@
         <div class="card" id="limbs"></div>
       </aside>
     </div>
+
+    <section style="margin-top:34px">
+      <p class="eyebrow">Muhurta finder</p>
+      <h2 style="margin-bottom:4px">When should I do it?</h2>
+      <p class="muted">The next 30 days, judged by the panchang <em>and</em> by your own birth star and Moon sign — a day that is good for everyone is not always good for you.</p>
+      <div class="toolbar">
+        <div class="field" style="margin:0;min-width:260px"><label for="event">What are you planning?</label><select id="event"></select></div>
+      </div>
+      <div id="muhurta"><p class="muted">Finding windows…</p></div>
+    </section>
   </main>
 
   <script src="/js/app.js"></script>
@@ -100,9 +110,37 @@
           <p class="hint">Read at sunrise, the traditional start of the day. All timings are local to ${p.place}.</p>`;
       }
 
+      const e = Vidhya.escapeHtml;
+      const eventEl = document.getElementById('event');
+      const dayLabel = (iso, tz) => new Date(iso).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', timeZone: tz });
+
+      async function loadMuhurta() {
+        const box = document.getElementById('muhurta');
+        box.innerHTML = '<p class="muted">Finding windows…</p>';
+        const m = await Vidhya.api(`/api/muhurta?event=${eventEl.value || 'start'}&city=${encodeURIComponent(cityEl.value)}`);
+        if (!eventEl.options.length) {
+          eventEl.innerHTML = m.events.map((x) => `<option value="${x.key}">${e(x.name)}</option>`).join('');
+          eventEl.value = m.event.key;
+        }
+        const win = (w) => `<strong>${dayLabel(w.start, m.timezone)}</strong> · ${Vidhya.clockTime(w.start, m.timezone)}–${Vidhya.clockTime(w.end, m.timezone)}${new Date(w.start) <= Date.now() ? ' · <span class="chip gold">now</span>' : ''}`;
+        box.innerHTML = (m.best.length ? `<div class="stack">${m.best.map((w, i) => `
+          <div class="card${i ? ' card--quiet' : ''}">
+            <div class="panel-head"><h3 style="margin:0">${win(w)}</h3><span class="band band--${i ? 'working' : 'strong'}">${i ? 'good' : 'best'}</span></div>
+            <p class="muted" style="margin:4px 0 8px">${e(w.tithi)} · ${e(w.nakshatra)} · ${e(w.choghadiya)} choghadiya</p>
+            <ul class="sig-list">${w.good.map((g) => `<li>${e(g)}</li>`).join('')}</ul>
+            ${w.bad.length ? `<p class="hint">Weighs against it: ${w.bad.map(e).join('; ')}</p>` : ''}
+          </div>`).join('')}</div>`
+          : '<p class="muted">No window in the next 30 days clears the bar for this. Ask a priest to look closer.</p>')
+          + (m.avoid.length ? `<h3 style="margin-top:22px">Days to keep it away from</h3><ul class="fact-list">${m.avoid.map((w) =>
+            `<li><span>${dayLabel(w.start, m.timezone)}</span><strong>${e(w.bad[0] || '')}</strong></li>`).join('')}</ul>` : '')
+          + `<p class="hint">Rahu kaal, Yamaganda and Gulika are already cut out of every window. Each limb is read at the middle of the window, because tithi and nakshatra change during the day. For a wedding or griha pravesh, confirm with a priest.</p>`;
+      }
+
       dateEl.addEventListener('change', load);
-      cityEl.addEventListener('change', load);
+      cityEl.addEventListener('change', () => { load(); loadMuhurta(); });
+      eventEl.addEventListener('change', loadMuhurta);
       load();
+      loadMuhurta();
     })();
   </script>
 </body>
