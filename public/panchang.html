@@ -48,10 +48,10 @@
       if (!me) return;
       const dateEl = document.getElementById('date');
       const cityEl = document.getElementById('city');
-      dateEl.value = new Date().toISOString().slice(0, 10);
+      dateEl.value = new Date().toLocaleDateString('en-CA');
       const cities = await Vidhya.api('/api/cities');
       cityEl.innerHTML = cities.map((c) => `<option value="${c.name}">${c.name}, ${c.country}</option>`).join('');
-      cityEl.value = me.profile.city;
+      cityEl.value = me.profile.currentCity || me.profile.city;
 
       // Places a band on the daylight bar at its true position between sunrise and sunset.
       function band(p, window, className, label) {

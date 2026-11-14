@@ -67,6 +67,13 @@ const Vidhya = (() => {
     let me = null;
     try { me = await api('/api/me'); } catch { location.href = '/login'; return null; }
     renderHeader(me.profile);
+    // The guide needs a chart to read, so it appears once birth details exist.
+    if (me.profile && !document.querySelector('script[data-guide]')) {
+      const s = document.createElement('script');
+      s.src = '/js/guide.js';
+      s.dataset.guide = '';
+      document.body.appendChild(s);
+    }
     return me;
   }
 

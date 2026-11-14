@@ -42,6 +42,11 @@
         <label for="city">Place of birth</label>
         <select id="city" name="city" required></select>
       </div>
+      <div class="field">
+        <label for="currentCity">Where you live now</label>
+        <select id="currentCity" name="currentCity"></select>
+        <span class="hint">Used for sunrise, Rahu kaal and muhurta times. Your kundli always uses your birth place.</span>
+      </div>
       <p class="error" id="error"></p>
       <button class="btn" type="submit" style="width:100%">Calculate my kundli</button>
     </form>
@@ -55,6 +60,8 @@
       const cities = await Vidhya.api('/api/cities');
       form.city.innerHTML = cities.map((c) => `<option value="${c.name}">${c.name}, ${c.country}</option>`).join('');
       form.city.value = 'Kathmandu';
+      form.currentCity.innerHTML = '<option value="">Same as place of birth</option>'
+        + cities.map((c) => `<option value="${c.name}">${c.name}, ${c.country}</option>`).join('');
 
       // Editing existing details rather than setting them up for the first time.
       if (me.profile) {
@@ -64,6 +71,7 @@
         form.birthDate.value = me.profile.birthDate;
         form.birthTime.value = me.profile.birthTime;
         form.city.value = me.profile.city;
+        form.currentCity.value = me.profile.currentCity || '';
         form.querySelector('button').textContent = 'Save changes';
       }
 
@@ -76,6 +84,7 @@
             body: {
               fullName: form.fullName.value, nwaranName: form.nwaranName.value,
               birthDate: form.birthDate.value, birthTime: form.birthTime.value, city: form.city.value,
+              currentCity: form.currentCity.value || null,
             },
           });
           await veil.done();

@@ -27,6 +27,8 @@ const { janma } = require('./lib/janma');
 const Muhurta = require('./lib/muhurta');
 const Significators = require('./lib/significators');
 const Discover = require('./lib/discover');
+const Anthropic = require('@anthropic-ai/sdk');
+const Guide = require('./lib/guide');
 
 const app = express();
 const PORT = process.env.PORT || 3100;
@@ -137,7 +139,12 @@ app.post('/api/auth/logout', (req, res) => {
 // ---------- profile ----------
 const publicProfile = (p) => p && ({
   fullName: p.full_name, nwaranName: p.nwaran_name, birthDate: p.birth_date, birthTime: p.birth_time, city: p.city,
+  currentCity: p.current_city || null,
 });
+
+// The chart is always cast for the birth place. Daily timings (sunrise, Rahu kaal, muhurta)
+// belong to where the person lives now, which falls back to the birth place.
+const livingPlace = (profile) => CITIES.find((c) => c.name === (profile?.current_city || profile?.city)) || CITIES[0];
 
 app.get('/api/me', requireUser, (req, res) => {
   res.json({ user: { id: req.user.id, email: req.user.email }, profile: publicProfile(getProfile(req.user.id)) });
@@ -148,8 +155,11 @@ app.get('/api/cities', (req, res) => {
 });
 
 app.put('/api/profile', requireUser, (req, res) => {
-  const { fullName, nwaranName, birthDate, birthTime, city } = req.body || {};
+  const { fullName, nwaranName, birthDate, birthTime, city, currentCity } = req.body || {};
   const place = CITIES.find((c) => c.name === city);
+  if (currentCity && !CITIES.some((c) => c.name === currentCity)) {
+    return res.status(400).json({ error: 'Choose where you live now from the list, or leave it as your birth place.' });
+  }
   if (!fullName?.trim() || !place || !/^\d{4}-\d{2}-\d{2}$/.test(birthDate || '') || !/^\d{2}:\d{2}$/.test(birthTime || '')) {
     return res.status(400).json({ error: 'Enter your full name, birth date, birth time and birth place.' });
   }
@@ -157,12 +167,13 @@ app.put('/api/profile', requireUser, (req, res) => {
     return res.status(400).json({ error: 'Birth date and time cannot be in the future.' });
   }
   db.prepare(`
-    INSERT INTO profiles (user_id, full_name, nwaran_name, birth_date, birth_time, city)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO profiles (user_id, full_name, nwaran_name, birth_date, birth_time, city, current_city)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(user_id) DO UPDATE SET
       full_name = excluded.full_name, nwaran_name = excluded.nwaran_name, birth_date = excluded.birth_date,
-      birth_time = excluded.birth_time, city = excluded.city, updated_at = datetime('now')`)
-    .run(req.user.id, fullName.trim(), nwaranName?.trim() || null, birthDate, birthTime, city);
+      birth_time = excluded.birth_time, city = excluded.city, current_city = excluded.current_city, updated_at = datetime('now')`)
+    .run(req.user.id, fullName.trim(), nwaranName?.trim() || null, birthDate, birthTime, city,
+      currentCity && currentCity !== city ? currentCity : null);
   res.json({ ok: true, next: '/kundli' });
 });
 
@@ -250,8 +261,9 @@ app.get('/api/reading/me', requireUser, requireProfile, (req, res) => {
 // Panchang for today at the user's place (or their birth place as a fallback).
 app.get('/api/panchang', requireUser, (req, res) => {
   const profile = getProfile(req.user.id);
-  const place = CITIES.find((c) => c.name === (req.query.city || profile?.city)) || CITIES[0];
-  const iso = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date || '') ? req.query.date : new Date().toISOString().slice(0, 10);
+  const place = CITIES.find((c) => c.name === req.query.city) || livingPlace(profile);
+  // "Today" is the date where that place is, not the server's UTC date.
+  const iso = /^\d{4}-\d{2}-\d{2}$/.test(req.query.date || '') ? req.query.date : new Date().toLocaleDateString('en-CA', { timeZone: place.tz });
   const at = localToUtc(iso, '12:00', place.tz);
   res.json({ date: iso, place: `${place.name}, ${place.country}`, timezone: place.tz, ...panchang(at, place.lat, place.lon) });
 });
@@ -260,7 +272,7 @@ app.get('/api/panchang', requireUser, (req, res) => {
 app.get('/api/muhurta', requireUser, requireProfile, (req, res) => {
   const eventKey = Muhurta.EVENTS[req.query.event] ? req.query.event : 'start';
   const days = Math.min(60, Math.max(7, Number(req.query.days) || 30));
-  const place = CITIES.find((c) => c.name === (req.query.city || req.profile.city)) || CITIES[0];
+  const place = CITIES.find((c) => c.name === req.query.city) || livingPlace(req.profile);
   const { chart } = chartFor(req.profile);
   const today = new Date().toLocaleDateString('en-CA', { timeZone: place.tz });
   const result = Muhurta.findMuhurta({
@@ -530,6 +542,127 @@ app.post('/api/practices/:actionId/checkin', requireUser, requireProfile, (req, 
 app.delete('/api/practices/:actionId/checkin/:day', requireUser, requireProfile, (req, res) => {
   db.prepare('DELETE FROM checkins WHERE user_id = ? AND action_id = ? AND day_done = ?').run(req.user.id, req.params.actionId, req.params.day);
   res.json({ practices: practicesFor(req.user.id, spaceContext(req), plausibleDay(req.params.day) ? req.params.day : todayUtc()) });
+});
+
+// ---------- Ask Vidhya: the AI guide ----------
+// Each person's chart, computed only as far as the tools actually ask for it.
+function guideWorld(req, todayDate) {
+  const memo = (fn) => { let done = false; let value; return () => (done ? value : (done = true, value = fn())); };
+  const base = memo(() => chartFor(req.profile));
+  const strengths = memo(() => evaluateAll(base().chart));
+  const rel = memo(() => relations(base().chart, strengths()));
+  const space = memo(() => spaceContext(req));
+  const here = livingPlace(req.profile);
+  const tz = () => here.tz;
+  const clock = (d) => new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: tz() });
+  const dayName = (d) => new Date(d).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: tz() });
+  return {
+    profile: publicProfile(req.profile),
+    todayDate,
+    base, strengths, rel, space,
+    detail: memo(() => interpret(base().chart, base().dasha, { visibleTiers: ['open', 'guarded'] })),
+    numerology: memo(() => numerologyProfile(req.profile.birth_date, req.profile.full_name)),
+    western: memo(() => westernProfile(birthChart(base().utc, base().place.lat, base().place.lon, 'western'))),
+    janma: memo(() => janma(base().chart, strengths(), rel(), base().dasha, base().utc, base().place)),
+    muhurta(event, days) {
+      const { chart } = base();
+      const place = here;
+      const r = Muhurta.findMuhurta({
+        eventKey: event, days, place,
+        from: localToUtc(todayDate, '00:00', place.tz),
+        natal: { nakshatraIndex: chart.nakshatra.index, moonSignIndex: chart.planets.find((p) => p.name === 'Moon').signIndex },
+      });
+      const slim = (w) => ({ when: `${dayName(w.start)}, ${clock(w.start)}–${clock(w.end)}`, choghadiya: w.choghadiya, tithi: w.limbs.tithi.label, nakshatra: w.limbs.nakshatra, good: w.good, against: w.bad });
+      return { event: r.event.name, place: `${place.name}, ${place.country}`, best: r.best.map(slim), avoid: r.avoid.map((w) => ({ day: dayName(w.start), why: w.bad[0] })) };
+    },
+    today() {
+      const { chart } = base();
+      const place = here;
+      const p = panchang(localToUtc(todayDate, '12:00', place.tz), place.lat, place.lon);
+      const m = p.muhurtas;
+      const daily = reading('vedic', chart.planets.find((x) => x.name === 'Moon').signIndex, 'daily');
+      const practices = practicesFor(req.user.id, space(), todayDate).filter((x) => x.status === 'active')
+        .map((x) => ({ planet: x.planet, day: x.day, dueToday: x.progress.dueToday, doneThisWeek: x.progress.doneThisWeek, tiny: x.plan.tiny }));
+      return {
+        date: todayDate, place: `${place.name}, ${place.country}`,
+        vara: p.vara, tithi: p.tithi.label, nakshatra: p.nakshatra, yoga: p.yoga, karana: p.karana,
+        sunrise: p.sunrise && clock(p.sunrise), sunset: p.sunset && clock(p.sunset),
+        rahuKaal: m && `${clock(m.rahuKaal.start)}–${clock(m.rahuKaal.end)}`, abhijit: m && `${clock(m.abhijit.start)}–${clock(m.abhijit.end)}`,
+        dailyReading: { moonSign: daily.sign, summary: daily.summary, detail: daily.detail },
+        practices,
+      };
+    },
+  };
+}
+
+// Spend guard: the guide calls a paid API, so each person gets a daily allowance.
+const GUIDE_DAILY_LIMIT = Number(process.env.GUIDE_DAILY_LIMIT) || 40;
+const guideUse = new Map();
+function guideAllowance(userId, day) {
+  const u = guideUse.get(userId);
+  if (!u || u.day !== day) { guideUse.set(userId, { day, count: 1 }); return true; }
+  if (u.count >= GUIDE_DAILY_LIMIT) return false;
+  u.count += 1;
+  return true;
+}
+
+function cleanHistory(raw) {
+  if (!Array.isArray(raw) || !raw.length) return null;
+  const turns = raw.slice(-20).map((m) => ({
+    role: m?.role === 'assistant' ? 'assistant' : 'user',
+    text: String(m?.text || '').trim().slice(0, m?.role === 'assistant' ? 6000 : 1500),
+  })).filter((m) => m.text);
+  while (turns.length && turns[0].role !== 'user') turns.shift();
+  const alternates = turns.every((m, i) => i === 0 || m.role !== turns[i - 1].role);
+  return turns.length && alternates && turns.at(-1).role === 'user' ? turns : null;
+}
+
+// Without the AI (no credentials configured), answer from the deterministic router instead.
+function offlineAnswer(req, question) {
+  const ans = Intent.answer(question, spaceContext(req), { focus: readFocus(req.user.id) });
+  if (ans.kind === 'fact') return { text: [ans.headline, ...ans.points].join('\n\n'), links: ans.links };
+  if (!ans.sections) {
+    return { text: ans.message || 'Try asking about one area: work, money, relationships, home, energy, study, travel or inner life.', links: [{ href: '/space', label: 'My space' }] };
+  }
+  const lines = [ans.headline, ...ans.sections.flatMap((s) => s.findings.slice(0, 2).map((f) => `- ${f.sentence}`))];
+  return { text: lines.join('\n'), links: ans.models.slice(0, 2).map((m) => ({ href: `/space?reading=${encodeURIComponent(m.id)}`, label: m.title })) };
+}
+
+app.post('/api/guide', requireUser, requireProfile, async (req, res) => {
+  const history = cleanHistory(req.body?.messages);
+  if (!history) return res.status(400).json({ error: 'Send the conversation, ending with your question.' });
+  const mode = req.body?.mode === 'teach' ? 'teach' : 'answer';
+  const today = plausibleDay(req.body?.today) ? req.body.today : todayUtc();
+  const question = history.at(-1).text;
+  const log = (kind, extra = {}) => db.prepare('INSERT INTO asks (user_id, kind, boundary, topic, intent, models) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(req.user.id, kind, extra.boundary || null, extra.topic || null, mode, extra.models || null);
+
+  // Boundaries are decided here, deterministically, and never sent to the model.
+  const b = Intent.boundary(question);
+  if (b) {
+    log('guide-boundary', { boundary: b.id });
+    return res.json({ text: b.message, links: b.offer === 'consult' ? [{ href: '/consult', label: 'Talk to a priest' }] : [], boundary: b.id });
+  }
+  if (!guideAllowance(req.user.id, today)) {
+    return res.status(429).json({ error: `You have used today's ${GUIDE_DAILY_LIMIT} questions. The guide resets tomorrow; My space still answers in the meantime.` });
+  }
+
+  try {
+    const out = await Guide.respond(history, guideWorld(req, today), { mode });
+    const used = out.used.find((u) => u.startsWith('run_reading:'));
+    log('guide', { topic: used ? used.split(':')[1].split('.')[0] : null, models: out.used.join(',') || null });
+    res.json({ text: out.text, links: out.links, refused: !!out.refused });
+  } catch (err) {
+    if (err instanceof Anthropic.RateLimitError) return res.status(503).json({ error: 'The guide is busy right now. Try again in a minute.' });
+    if (err instanceof Anthropic.APIError && !(err instanceof Anthropic.AuthenticationError) && !(err instanceof Anthropic.PermissionDeniedError)) {
+      console.error('guide API error', err.status, err.message);
+      return res.status(502).json({ error: 'The guide could not answer just now. Try again shortly.' });
+    }
+    // Missing or rejected credentials (or no network): fall back so the panel still helps.
+    console.error('guide offline:', err.message);
+    log('guide-offline');
+    res.json({ ...offlineAnswer(req, question), offline: true });
+  }
 });
 
 app.listen(PORT, () => console.log(`Vidhya running at http://localhost:${PORT}`));

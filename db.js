@@ -93,6 +93,11 @@ db.exec(`
   );
 `);
 
+// Added after launch: where the person lives now, for daily timings. NULL means the birth place.
+if (!db.prepare("SELECT 1 FROM pragma_table_info('profiles') WHERE name = 'current_city'").get()) {
+  db.exec('ALTER TABLE profiles ADD COLUMN current_city TEXT');
+}
+
 // Sample priests so the consultation flow works out of the box.
 if (!db.prepare('SELECT COUNT(*) AS n FROM priests').get().n) {
   const insert = db.prepare('INSERT INTO priests (name, title, speciality, languages, experience_years, bio, fee_npr) VALUES (?, ?, ?, ?, ?, ?, ?)');

@@ -252,6 +252,10 @@
         if (a.kind === 'boundary') {
           return `<div class="answer boundary"><p>${e(a.message)}</p>${a.offer === 'consult' ? '<a class="btn secondary" href="/consult">Talk to a priest</a>' : ''}</div>`;
         }
+        if (a.kind === 'fact') {
+          return `<div class="answer"><p class="headline">${e(a.headline)}</p>${a.points.map((p) => `<p>${e(p)}</p>`).join('')}
+            <ul class="fact-list" style="margin-top:12px">${a.facts.map((f) => `<li><span>${e(f.label)}</span><strong>${e(f.value)}</strong></li>`).join('')}</ul></div>`;
+        }
         if (a.kind === 'unclear') {
           return `<div class="answer"><p>${e(a.message)}</p><div class="suggest">${a.suggestions.map((s) =>
             `<button type="button" data-ask="${e(s.question)}">${e(s.question)}</button>`).join('')}</div></div>`;
@@ -340,6 +344,9 @@
 
       await load();
       renderAll();
+      // Deep link: /space?reading=<id> opens that reading.
+      const linkedReading = new URLSearchParams(location.search).get('reading');
+      if (linkedReading && st.space.catalog.some((r) => r.id === linkedReading)) openReading(linkedReading);
     })();
   </script>
 </body>

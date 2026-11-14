@@ -657,8 +657,17 @@
         state.tone = v; await load(); renderSummary(); renderPicker(); renderPanel(); renderChart();
       });
 
+      // Deep link from the guide or elsewhere: ?lens=<lens>&pick=<item> (the system is inferred).
+      const qs = new URLSearchParams(location.search);
+      const linked = qs.get('lens') && Object.keys(LENSES).find((s) => LENSES[s].some(([v]) => v === qs.get('lens')));
+      if (linked) {
+        state.system = linked; state.lens = qs.get('lens'); state.pick = qs.get('pick');
+        if (state.lens === 'houses' && state.pick) state.house = Number(state.pick);
+      }
+
       renderSummary(); renderChart(); renderLensBar(); renderPicker(); renderPanel(); sync(); renderHover(null);
       document.getElementById('page').classList.remove('hidden');
+      if (linked) document.getElementById('lens').scrollIntoView({ block: 'start' });
       await veil.done(1400);
     })();
   </script>
