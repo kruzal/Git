@@ -352,10 +352,10 @@ route('GET', '/api/discover/library', requireProfile, (req) => {
 
 route('GET', '/api/discover/conjunction', (req) => {
   const names = discoverLibrary.planets.map((p) => p.name);
-  const { a, b } = req.query;
+  const { a, b, c } = req.query;
   const house = Number(req.query.house);
-  if (!names.includes(a) || !names.includes(b)) throw new HttpError(400, 'Pick two planets.');
-  return Discover.conjunction(a, b, house >= 1 && house <= 12 ? house : null);
+  if (!names.includes(a) || !names.includes(b) || (c && !names.includes(c))) throw new HttpError(400, 'Pick two or three planets.');
+  return Discover.conjunction(a, b, house >= 1 && house <= 12 ? house : null, c || null);
 });
 
 route('POST', '/api/discover/simulate', requireProfile, (req) => {

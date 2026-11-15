@@ -40,6 +40,7 @@
       <div class="toolbar">
         <div class="field" style="margin:0"><label for="conj-a">First planet</label><select id="conj-a"></select></div>
         <div class="field" style="margin:0"><label for="conj-b">Second planet</label><select id="conj-b"></select></div>
+        <div class="field" style="margin:0"><label for="conj-c">Third planet</label><select id="conj-c"></select></div>
         <div class="field" style="margin:0"><label for="conj-h">In house</label><select id="conj-h"></select></div>
       </div>
       <div class="split">
@@ -99,7 +100,7 @@
 
       const lib = await Vidhya.api('/api/discover/library');
       const glyph = Object.fromEntries(lib.planets.map((p) => [p.name, p.glyph]));
-      const state = { tab: 'houses', planet: 'Sun', house: lib.mine.Sun || 1, a: 'Moon', b: 'Jupiter', h: 0, pick: 'Jupiter', moves: {}, lagna: null, base: null, sim: null };
+      const state = { tab: 'houses', planet: 'Sun', house: lib.mine.Sun || 1, a: 'Moon', b: 'Jupiter', c: '', h: 0, pick: 'Jupiter', moves: {}, lagna: null, base: null, sim: null };
 
       // ---------------------------------------------------------- tabs
       function showTab(tab) {
@@ -169,35 +170,46 @@
       const opts = (sel) => lib.planets.map((p) => `<option value="${p.name}" ${p.name === sel ? 'selected' : ''}>${p.glyph} ${p.name}</option>`).join('');
       document.getElementById('conj-a').innerHTML = opts(state.a);
       document.getElementById('conj-b').innerHTML = opts(state.b);
+      document.getElementById('conj-c').innerHTML = '<option value="">None</option>' + opts(state.c);
       document.getElementById('conj-h').innerHTML = '<option value="0">Any house</option>'
         + Array.from({ length: 12 }, (_, i) => `<option value="${i + 1}">${ord(i + 1)} — ${e(lib.placements.Sun[i].house_.name)}</option>`).join('');
       document.getElementById('conj-covered').innerHTML = lib.covered.map((k) =>
         `<button type="button" class="planet-chip" data-pair="${k}" style="padding:4px 11px;font-size:0.82rem">${k.split('+').map((p) => glyph[p]).join(' ')} ${e(k.replace('+', ' + '))}</button>`).join('');
       document.querySelectorAll('#conj-covered [data-pair]').forEach((b) => b.addEventListener('click', () => {
-        [state.a, state.b] = b.dataset.pair.split('+');
-        document.getElementById('conj-a').value = state.a; document.getElementById('conj-b').value = state.b;
+        [state.a, state.b] = b.dataset.pair.split('+'); state.c = '';
+        document.getElementById('conj-a').value = state.a; document.getElementById('conj-b').value = state.b; document.getElementById('conj-c').value = '';
         loadConj();
       }));
-      ['conj-a', 'conj-b', 'conj-h'].forEach((id) => document.getElementById(id).addEventListener('change', () => {
+      ['conj-a', 'conj-b', 'conj-c', 'conj-h'].forEach((id) => document.getElementById(id).addEventListener('change', () => {
         state.a = document.getElementById('conj-a').value; state.b = document.getElementById('conj-b').value;
+        state.c = document.getElementById('conj-c').value;
         state.h = Number(document.getElementById('conj-h').value); loadConj();
       }));
 
+      let conjSeq = 0;
       async function loadConj() {
         const box = document.getElementById('conj-result');
-        if (state.a === state.b) { box.innerHTML = '<p class="muted">Pick two different planets.</p>'; return; }
-        const c = await Vidhya.api(`/api/discover/conjunction?a=${state.a}&b=${state.b}${state.h ? '&house=' + state.h : ''}`);
-        const yours = lib.mine[state.a] && lib.mine[state.a] === lib.mine[state.b];
+        const seq = ++conjSeq;
+        const picked = [state.a, state.b, state.c].filter(Boolean);
+        if (new Set(picked).size < picked.length) { box.innerHTML = `<p class="muted">Pick ${picked.length === 3 ? 'three' : 'two'} different planets.</p>`; return; }
+        const c = await Vidhya.api(`/api/discover/conjunction?a=${state.a}&b=${state.b}${state.c ? '&c=' + state.c : ''}${state.h ? '&house=' + state.h : ''}`);
+        if (seq !== conjSeq) return; // a newer pick is already loading
+        const title = picked.map((p) => `${glyph[p]} ${e(p)}`).join(' + ');
+        const yours = lib.mine[state.a] && picked.every((p) => lib.mine[p] === lib.mine[state.a]);
+        const kind = c.pairs ? 'three planets’' : 'two planets’';
         box.innerHTML = c.impossible
-          ? `<h2>${glyph[state.a]} ${e(state.a)} + ${glyph[state.b]} ${e(state.b)}</h2><p class="reading-text">${e(c.text)}</p>`
-          : `<div class="panel-head"><h2>${glyph[c.pair[0]]} ${e(c.pair[0])} + ${glyph[c.pair[1]]} ${e(c.pair[1])}${c.name ? ' — ' + e(c.name) : ''}</h2>
+          ? `<h2>${title}</h2><p class="reading-text">${e(c.text)}</p>`
+          : `<div class="panel-head"><h2>${title}${c.name ? ' — ' + e(c.name) : ''}</h2>
               <span class="chip${c.source === 'corpus' ? ' gold' : ''}">${c.source === 'corpus' ? 'classical reading' : 'composed'}</span></div>
             ${c.house ? `<p class="muted">in the ${ord(c.house)} house</p>` : ''}
             <p class="reading-text${c.tier === 'guarded' ? ' soft' : ''}" style="font-size:1.03rem">${e(c.text)}</p>
             ${c.tier === 'guarded' ? '<p class="hint">A tendency to watch for, not a verdict.</p>' : ''}
             ${c.notes.map((n) => `<p class="reading-text">${e(n)}</p>`).join('')}
-            ${yours ? `<p class="hint"><strong>You have this:</strong> both sit in your ${ord(lib.mine[state.a])} house.</p>` : ''}
-            ${c.source === 'composed' ? '<p class="hint">No classical reading covers this pair, so this is assembled from the two planets’ natures.</p>' : ''}`;
+            ${c.pairs ? `<h3>Each pair inside it</h3>${c.pairs.map((p) => `
+              <p class="reading-text${p.tier === 'guarded' ? ' soft' : ''}"><strong>${glyph[p.pair[0]]} ${e(p.pair[0])} + ${glyph[p.pair[1]]} ${e(p.pair[1])}${p.name ? ' — ' + e(p.name) : ''}</strong>
+                <span class="chip${p.source === 'corpus' ? ' gold' : ''}" style="margin-left:6px">${p.source === 'corpus' ? 'classical reading' : 'composed'}</span><br>${e(p.text)}</p>`).join('')}` : ''}
+            ${yours ? `<p class="hint"><strong>You have this:</strong> ${picked.length === 3 ? 'all three' : 'both'} sit in your ${ord(lib.mine[state.a])} house.</p>` : ''}
+            ${c.source === 'composed' ? `<p class="hint">No classical reading covers this ${c.pairs ? 'group' : 'pair'}, so this is assembled from the ${kind} natures.</p>` : ''}`;
       }
 
       // ------------------------------------------------------- what if

@@ -345,10 +345,10 @@ app.get('/api/discover/library', requireUser, requireProfile, (req, res) => {
 
 app.get('/api/discover/conjunction', requireUser, (req, res) => {
   const names = discoverLibrary.planets.map((p) => p.name);
-  const { a, b } = req.query;
+  const { a, b, c } = req.query;
   const house = Number(req.query.house);
-  if (!names.includes(a) || !names.includes(b)) return res.status(400).json({ error: 'Pick two planets.' });
-  res.json(Discover.conjunction(a, b, house >= 1 && house <= 12 ? house : null));
+  if (!names.includes(a) || !names.includes(b) || (c && !names.includes(c))) return res.status(400).json({ error: 'Pick two or three planets.' });
+  res.json(Discover.conjunction(a, b, house >= 1 && house <= 12 ? house : null, c || null));
 });
 
 // Rebuild the user's own chart with changes and return both readings, so the page can diff them.
