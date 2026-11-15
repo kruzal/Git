@@ -63,14 +63,14 @@ const PATCHES = {
 const LIB_PATCHES = {
   guide: [
     ["\n  ['/consult', 'Consult — book a priest (kundli matching, personal questions)'],", ''],
-    ["\n  ['/compatibility', 'Match — kundli matching with another person: their birth details, guna milan out of 36, Mangal dosha for both'],", ''],
+    ["\n  ['/compatibility', 'Match — kundli matching with another person: their birth details, guna milan out of 36, Mangal dosha, 7th house, Navamsa, dasha timing, remedies and red flags for both'],", ''],
     ['; for kundli matching, send them to the Match page (/compatibility).', '.'],
   ],
   intent: [
     [' If it helps to talk to a person here, the Consult page can book a conversation, but please do not wait for that if you are not safe.', ''],
     ['a priest on the Consult page can sit with you in a real conversation.', 'please talk to someone you trust.'],
     // The Match page isn't in the Artifact either.
-    ['Kundli matching is on the Match page: add their birth details there for the guna milan out of 36 and Mangal dosha for you both. Here I read only your own chart,', 'I can only read your own chart here,'],
+    ['Kundli matching is on the Match page: add their birth details there for the guna milan out of 36, Mangal dosha, the 7th house, Navamsa and dasha timing for you both. Here I read only your own chart,', 'I can only read your own chart here,'],
     ["offer: 'match' }", 'offer: null }'],
   ],
 };

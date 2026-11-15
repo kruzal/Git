@@ -15,7 +15,7 @@
     <section class="hero">
       <p class="eyebrow">Kundli matching</p>
       <h1>Match two charts</h1>
-      <p class="muted">Guna milan reads both Moons across eight kootas, out of 36, and checks Mangal dosha for you both. Their details are used for this answer only and are not saved.</p>
+      <p class="muted">Guna milan out of 36, Mangal dosha, the 7th house, Navamsa and dasha timing for you both, with remedies and red flags. Their details are used for this answer only and are not saved.</p>
     </section>
 
     <form class="card" id="match-form" style="max-width:680px;margin-bottom:28px">
@@ -77,8 +77,30 @@
       function render(r) {
         const you = r.role, them = you === 'groom' ? 'bride' : 'groom';
         const youName = e(r.names.you), themName = e(r.names.them);
-        const mars = (m) => (m.lagna ? `Manglik: Mars in house ${m.fromLagna} from the ascendant${m.softened ? `, but in ${e(m.sign)}, its own or exaltation sign, which tradition holds to cancel it` : ''}`
-          : m.moon ? `Mildly Manglik: Mars in house ${m.fromMoon} from the Moon only` : 'Not Manglik');
+        const ord = (n) => n + (n % 10 === 1 && n !== 11 ? 'st' : n % 10 === 2 && n !== 12 ? 'nd' : n % 10 === 3 && n !== 13 ? 'rd' : 'th');
+        const band = (b) => `<span class="band band--${e(b)}">${e(b)}</span>`;
+        const STATUS = { flag: ['weak', 'Flag'], eased: ['strained', 'Eased'], clear: ['strong', 'Clear'], unknown: ['working', 'Unknown'] };
+        const TONE = { strong: 'strong', easy: 'strong', tense: 'strained', awkward: 'weak' };
+        const status = (s) => `<span class="band band--${STATUS[s][0]}">${STATUS[s][1]}</span>`;
+        const label = { [you]: `${youName} (you)`, [them]: themName };
+        const both = (title, cell) => `<tr><td><strong>${title}</strong></td><td>${cell(you)}</td><td>${cell(them)}</td></tr>`;
+        const table = (rows) => `<div class="table-wrap"><table><thead><tr><th></th><th>${youName}</th><th>${themName}</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+
+        const mars = (m) => {
+          const refs = [['ascendant', 'the ascendant'], ['Moon', 'the Moon'], ['Venus', 'Venus']].map(([k, w]) => `${ord(m.from[k])} from ${w}${m.hits.includes(k) ? ' ✓' : ''}`).join(' · ');
+          const head = m.level === 'none' ? 'Not Manglik' : m.level === 'cancelled' ? 'Manglik, but cancelled' : `Manglik (${m.level}: ${m.hits.length} of 3)`;
+          return `<strong>${head}</strong><span class="hint">Mars in ${e(m.sign)}: ${refs}</span>${m.eased.length ? `<span class="hint">${e(m.eased.join('; '))}</span>` : ''}`;
+        };
+        const placed = (p) => `${e(p.sign)}, ${ord(p.house)} house ${band(p.band)}`;
+        const M = r.marriage, N = r.navamsa, D = r.dasha;
+        const dasha = (d) => d ? `<strong>${e(d.maha)}</strong> mahadasha${d.antar ? `, ${e(d.antar)} antardasha` : ''}<span class="hint">until ${e(d.until)}${d.next ? `, then ${e(d.next.lord)}` : ''}</span>${d.marriagePeriod ? '<span class="hint">A traditional period for marriage</span>' : ''}` : '—';
+        const whose = (s, cap) => (s === you ? (cap ? 'Your' : 'your') : `${themName}'s`);
+        const chem = (c, marsOf, venusOf) => `<li><span>${whose(marsOf, true)} Mars in ${e(c.mars)}, ${whose(venusOf)} Venus in ${e(c.venus)}</span><strong style="font-weight:400;text-align:left"><span class="band band--${TONE[c.tone]}">${e(c.tone)}</span> ${e(c.about)}</strong></li>`;
+        const chemRows = [chem(M.chemistry.groomMars, 'groom', 'bride'), chem(M.chemistry.brideMars, 'bride', 'groom')];
+        const remedyItem = (x) => x.traditional
+          ? `<li><span>${e(x.for)}</span><strong style="font-weight:400;text-align:left">${e(x.traditional)}</strong></li>`
+          : `<li><span>${e(x.for)}</span><strong style="font-weight:400;text-align:left">${e(x.do)}<span class="hint">${e(x.day)} · give ${e(x.give)} · wear ${e(x.wear)} · avoid ${e(x.avoid)}</span></strong></li>`;
+
         $('result').innerHTML = `
           <div class="split">
             <div class="card">
@@ -96,6 +118,12 @@
                 </ul>
               </div>
             </aside>
+          </div>
+
+          <div class="card" style="margin-top:20px">
+            <h2>Red flags</h2>
+            <p class="muted">The five things tradition checks before anything else. Eased means a rule of cancellation applies.</p>
+            <ul class="fact-list">${r.redFlags.map((f) => `<li><span>${e(f.name)}</span><strong style="font-weight:400;text-align:left">${status(f.status)} ${e(f.detail)}</strong></li>`).join('')}</ul>
           </div>
 
           <div class="card" style="margin-top:20px">
@@ -121,13 +149,58 @@
 
           <div class="card" style="margin-top:20px">
             <h2>Mangal dosha</h2>
+            <p class="muted">Mars in the 1st, 2nd, 4th, 7th, 8th or 12th house, counted from the ascendant, the Moon and Venus. The more of the three, the stronger the dosha.</p>
             <ul class="fact-list">
-              <li><span>${youName} (you)</span><strong>${mars(r.manglik[you])}</strong></li>
-              <li><span>${themName}</span><strong>${mars(r.manglik[them])}</strong></li>
+              <li><span>${youName} (you)</span><span>${mars(r.manglik[you])}</span></li>
+              <li><span>${themName}</span><span>${mars(r.manglik[them])}</span></li>
             </ul>
             <p class="muted" style="margin-top:12px">${e(r.manglik.summary)}</p>
           </div>
-          <p class="hint" style="margin-top:16px">Guna milan reads the Moons only, and scoring tables differ a little between traditions. It is a starting point for reflection, not a verdict on two people.</p>`;
+
+          <div class="card" style="margin-top:20px">
+            <h2>Marriage in each chart</h2>
+            <p class="muted">The 7th house is the house of partnership: its sign, its lord and what sits there. Venus is love, Jupiter is commitment.</p>
+            ${table([
+              both('Ascendant', (s) => `${e(M[s].ascendant)}, ruled by ${e(M[s].ascendantLord)}`),
+              both('7th house', (s) => `${e(M[s].seventh.sign)}, ruled by ${e(M[s].seventh.lord)}`),
+              both('7th lord sits in', (s) => placed(M[s].seventh.lordAt)),
+              both('Planets in the 7th', (s) => (M[s].occupants.length ? e(M[s].occupants.join(', ')) : 'None') + (M[s].afflicted ? '<span class="hint">Two or more malefics: afflicted</span>' : '')),
+              both('Venus', (s) => placed(M[s].venus)),
+              both('Jupiter', (s) => placed(M[s].jupiter)),
+            ].join(''))}
+            <ul class="fact-list" style="margin-top:14px">
+              <li><span>Ascendant lords</span><strong style="font-weight:400;text-align:left">${e(M.ascendantLords.label)}</strong></li>
+              ${chemRows.join('')}
+              ${M.links.map((l) => `<li><span>Link</span><strong style="font-weight:400;text-align:left">${e(l)}</strong></li>`).join('')}
+            </ul>
+          </div>
+
+          <div class="card" style="margin-top:20px">
+            <h2>Navamsa (D9)</h2>
+            <p class="muted">The marriage chart: how the partnership matures over the years.</p>
+            ${table([
+              both('D9 ascendant', (s) => `${e(N[s].lagna)}, ruled by ${e(N[s].lagnaLord)}`),
+              both('D9 7th house', (s) => `${e(N[s].seventh)}, ruled by ${e(N[s].seventhLord)}<span class="hint">${e(N[s].seventhLord)} in ${e(N[s].seventhLordSign)}, ${e(N[s].seventhLordDignity)}</span>`),
+              both('Venus in D9', (s) => `${e(N[s].venusSign)}, ${e(N[s].venusDignity)}${N[s].venusVargottama ? '<span class="hint">Vargottama: the same sign in both charts, a strength</span>' : ''}`),
+            ].join(''))}
+            <ul class="fact-list" style="margin-top:14px">
+              <li><span>D9 ascendant lords</span><strong style="font-weight:400;text-align:left">${e(N.lagnaLords.label)}</strong></li>
+            </ul>
+          </div>
+
+          <div class="card" style="margin-top:20px">
+            <h2>Dasha timing</h2>
+            <p class="muted">The planetary periods you are both running now. One partner in a hard Saturn or Rahu period while the other is in an easy Venus or Jupiter one can pull you out of step.</p>
+            ${table(both('Running now', (s) => dasha(D[s])))}
+            ${D.clash ? '<p class="error" style="margin-top:12px">Your periods clash right now: expect to want different things for a while.</p>' : ''}
+          </div>
+
+          ${r.remedies.length ? `<div class="card" style="margin-top:20px">
+            <h2>Remedies</h2>
+            <p class="muted">What tradition prescribes for what was found above.</p>
+            <ul class="fact-list">${r.remedies.map(remedyItem).join('')}</ul>
+          </div>` : ''}
+          <p class="hint" style="margin-top:16px">Scoring tables differ a little between traditions. This is a starting point for reflection, not a verdict on two people.</p>`;
         $('result').scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
 

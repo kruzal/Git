@@ -217,8 +217,9 @@ app.post('/api/compatibility', requireUser, requireProfile, (req, res) => {
     return res.status(400).json({ error: 'Enter their birth date, birth time and birth place.' });
   }
   if (!['groom', 'bride'].includes(role)) return res.status(400).json({ error: 'Choose whether you are the groom or the bride in this match.' });
-  const mine = chartFor(req.profile).chart, theirs = chartFor({ birth_date: birthDate, birth_time: birthTime, city }).chart;
-  const result = role === 'groom' ? Compatibility.match(mine, theirs) : Compatibility.match(theirs, mine);
+  const mine = chartFor(req.profile), theirs = chartFor({ birth_date: birthDate, birth_time: birthTime, city });
+  const [groom, bride] = role === 'groom' ? [mine, theirs] : [theirs, mine];
+  const result = Compatibility.match(groom.chart, bride.chart, { dashas: { groom: groom.dasha, bride: bride.dasha } });
   res.json({ ...result, role, names: { you: req.profile.full_name, them: String(name || '').trim().slice(0, 80) || 'Them' } });
 });
 
