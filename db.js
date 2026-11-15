@@ -3,7 +3,8 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { DatabaseSync } = require('node:sqlite');
 
-const dataDir = path.join(__dirname, 'data');
+// VIDHYA_DATA_DIR points a test run at a throwaway database.
+const dataDir = process.env.VIDHYA_DATA_DIR || path.join(__dirname, 'data');
 fs.mkdirSync(dataDir, { recursive: true });
 
 const db = new DatabaseSync(path.join(dataDir, 'vidhya.db'));

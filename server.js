@@ -96,7 +96,8 @@ app.use((req, res, next) => {
   // A logged-in user without birth details is sent to set them up first.
   const hasProfile = !!getProfile(user.id);
   if (!hasProfile && req.path !== '/onboarding') return res.redirect('/onboarding');
-  if (hasProfile && req.path === '/onboarding' && req.query.edit === undefined) return res.redirect('/home');
+  // Birth details are edited on the account page, with the email and password.
+  if (hasProfile && req.path === '/onboarding') return res.redirect(req.query.edit === undefined ? '/home' : '/account');
   if (req.path === '/') return res.redirect('/home');
   if (req.path === '/priorities') return res.redirect('/space');
   next();
@@ -134,6 +135,36 @@ app.post('/api/auth/logout', (req, res) => {
   if (token) db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
   res.clearCookie(SESSION_COOKIE);
   res.json({ ok: true });
+});
+
+// ---------- account: changing the email or password needs the current password ----------
+const EMAIL_RE = /^\S+@\S+\.\S+$/;
+const passwordMatches = (userId, password) => {
+  const user = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(userId);
+  return !!user && verifyPassword(password || '', user.password_hash);
+};
+
+app.put('/api/account/email', requireUser, (req, res) => {
+  const { email, password } = req.body || {};
+  if (!passwordMatches(req.user.id, password)) return res.status(401).json({ error: 'Your current password is not right.' });
+  if (!EMAIL_RE.test(email || '')) return res.status(400).json({ error: 'Enter a valid email.' });
+  const normalized = email.trim().toLowerCase();
+  if (normalized === req.user.email) return res.status(400).json({ error: 'That is already your email.' });
+  if (db.prepare('SELECT 1 FROM users WHERE email = ?').get(normalized)) {
+    return res.status(409).json({ error: 'Another account already uses this email.' });
+  }
+  db.prepare('UPDATE users SET email = ? WHERE id = ?').run(normalized, req.user.id);
+  res.json({ ok: true, email: normalized });
+});
+
+// A new password signs out every other device, so an old session can't outlive it.
+app.put('/api/account/password', requireUser, (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+  if (!passwordMatches(req.user.id, currentPassword)) return res.status(401).json({ error: 'Your current password is not right.' });
+  if ((newPassword || '').length < 8) return res.status(400).json({ error: 'Use at least 8 characters for the new password.' });
+  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(newPassword), req.user.id);
+  const { changes } = db.prepare('DELETE FROM sessions WHERE user_id = ? AND token <> ?').run(req.user.id, readCookie(req, SESSION_COOKIE));
+  res.json({ ok: true, signedOut: changes });
 });
 
 // ---------- profile ----------

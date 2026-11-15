@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vidhya — Your account</title>
+  <script>(function(){var t;try{t=localStorage.getItem('vidhya-theme')}catch(e){}document.documentElement.dataset.theme=t||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')})()</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header class="site-header"></header>
+  <main>
+    <section class="hero" style="max-width:680px">
+      <h1>Your account</h1>
+      <p class="muted">Your details, the email you sign in with, and your password.</p>
+    </section>
+
+    <form class="card" id="details-form" style="max-width:680px;margin-bottom:24px">
+      <h2>Your details</h2>
+      <div class="field">
+        <label for="fullName">Full name</label>
+        <input id="fullName" name="fullName" autocomplete="name" required>
+      </div>
+      <div class="field">
+        <label for="nwaranName">Nwaran name <span class="muted">(optional)</span></label>
+        <input id="nwaranName" name="nwaranName">
+        <span class="hint">Your ritual name from the nwaran ceremony.</span>
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="birthDate">Date of birth</label>
+          <input id="birthDate" name="birthDate" type="date" required>
+        </div>
+        <div class="field">
+          <label for="birthTime">Time of birth</label>
+          <input id="birthTime" name="birthTime" type="time" required>
+          <span class="hint">As close as you know it</span>
+        </div>
+      </div>
+      <div class="field">
+        <label for="city">Place of birth</label>
+        <select id="city" name="city" required></select>
+      </div>
+      <div class="field">
+        <label for="currentCity">Where you live now</label>
+        <select id="currentCity" name="currentCity"></select>
+        <span class="hint">Used for sunrise, Rahu kaal and muhurta times. Your kundli always uses your birth place.</span>
+      </div>
+      <p class="hint">Changing your birth date, time or place recalculates your kundli and every reading.</p>
+      <p class="error" id="details-error" role="alert"></p>
+      <button class="btn" type="submit">Save my details</button>
+      <p class="hint" id="details-saved" role="status"></p>
+    </form>
+
+    <form class="card" id="email-form" style="max-width:680px;margin-bottom:24px">
+      <h2>Email</h2>
+      <p class="muted">You sign in with <strong id="current-email"></strong>.</p>
+      <div class="field">
+        <label for="email">New email</label>
+        <input id="email" name="email" type="email" autocomplete="email" required>
+      </div>
+      <div class="field">
+        <label for="email-password">Your current password</label>
+        <input id="email-password" name="password" type="password" autocomplete="current-password" required>
+      </div>
+      <p class="error" id="email-error" role="alert"></p>
+      <button class="btn" type="submit">Change email</button>
+      <p class="hint" id="email-saved" role="status"></p>
+    </form>
+
+    <form class="card" id="password-form" style="max-width:680px">
+      <h2>Password</h2>
+      <div class="field">
+        <label for="currentPassword">Current password</label>
+        <input id="currentPassword" name="currentPassword" type="password" autocomplete="current-password" required>
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="newPassword">New password</label>
+          <input id="newPassword" name="newPassword" type="password" autocomplete="new-password" minlength="8" required>
+          <span class="hint">At least 8 characters</span>
+        </div>
+        <div class="field">
+          <label for="confirmPassword">New password again</label>
+          <input id="confirmPassword" name="confirmPassword" type="password" autocomplete="new-password" minlength="8" required>
+        </div>
+      </div>
+      <p class="hint">Changing it signs you out on your other devices.</p>
+      <p class="error" id="password-error" role="alert"></p>
+      <button class="btn" type="submit">Change password</button>
+      <p class="hint" id="password-saved" role="status"></p>
+    </form>
+  </main>
+  <script src="/js/app.js"></script>
+  <script>
+    (async () => {
+      const me = await Vidhya.init();
+      if (!me) return;
+      const $ = (id) => document.getElementById(id);
+      // Each form shows its own error or "saved" line, and clears both when sent again.
+      const say = (name, error, saved) => { $(`${name}-error`).textContent = error || ''; $(`${name}-saved`).textContent = saved || ''; };
+
+      const details = $('details-form');
+      const cities = await Vidhya.api('/api/cities');
+      const options = cities.map((c) => `<option value="${c.name}">${c.name}, ${c.country}</option>`).join('');
+      details.city.innerHTML = options;
+      details.currentCity.innerHTML = '<option value="">Same as place of birth</option>' + options;
+      const p = me.profile;
+      details.fullName.value = p.fullName;
+      details.nwaranName.value = p.nwaranName || '';
+      details.birthDate.value = p.birthDate;
+      details.birthTime.value = p.birthTime;
+      details.city.value = p.city;
+      details.currentCity.value = p.currentCity || '';
+      details.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        say('details');
+        try {
+          await Vidhya.api('/api/profile', {
+            method: 'PUT',
+            body: {
+              fullName: details.fullName.value, nwaranName: details.nwaranName.value,
+              birthDate: details.birthDate.value, birthTime: details.birthTime.value, city: details.city.value,
+              currentCity: details.currentCity.value || null,
+            },
+          });
+          say('details', '', 'Saved. Your kundli and readings now use these details.');
+        } catch (err) {
+          say('details', err.message);
+        }
+      });
+
+      const email = $('email-form');
+      $('current-email').textContent = me.user.email;
+      email.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        say('email');
+        try {
+          const res = await Vidhya.api('/api/account/email', { method: 'PUT', body: { email: email.email.value, password: email.password.value } });
+          $('current-email').textContent = res.email;
+          email.reset();
+          say('email', '', `Saved. Sign in with ${res.email} from now on.`);
+        } catch (err) {
+          say('email', err.message);
+        }
+      });
+
+      const password = $('password-form');
+      password.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        say('password');
+        if (password.newPassword.value !== password.confirmPassword.value) { say('password', "The two new passwords don't match."); return; }
+        try {
+          const res = await Vidhya.api('/api/account/password', {
+            method: 'PUT', body: { currentPassword: password.currentPassword.value, newPassword: password.newPassword.value },
+          });
+          password.reset();
+          say('password', '', `Saved.${res.signedOut ? ` Signed out on ${res.signedOut} other ${res.signedOut === 1 ? 'device' : 'devices'}.` : ''}`);
+        } catch (err) {
+          say('password', err.message);
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
