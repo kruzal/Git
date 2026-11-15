@@ -250,7 +250,7 @@
       // ---------------------------------------------------------- answer
       function answerHtml(a) {
         if (a.kind === 'boundary') {
-          return `<div class="answer boundary"><p>${e(a.message)}</p>${a.offer === 'consult' ? '<a class="btn secondary" href="/consult">Talk to a priest</a>' : ''}</div>`;
+          return `<div class="answer boundary"><p>${e(a.message)}</p>${a.offer === 'consult' ? '<a class="btn secondary" href="/consult">Talk to a priest</a>' : ''}${a.offer === 'match' ? '<a class="btn secondary" href="/compatibility">Open Match</a>' : ''}</div>`;
         }
         if (a.kind === 'fact') {
           return `<div class="answer"><p class="headline">${e(a.headline)}</p>${a.points.map((p) => `<p>${e(p)}</p>`).join('')}

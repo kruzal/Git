@@ -47,6 +47,7 @@ const PATCHES = {
   // Download everything as JSON; shell.js shows the card when the viewer allows downloads.
   space: [
     [`\${a.offer === 'consult' ? '<a class="btn secondary" href="/consult">Talk to a priest</a>' : ''}`, ''],
+    [`\${a.offer === 'match' ? '<a class="btn secondary" href="/compatibility">Open Match</a>' : ''}`, ''],
     ['</aside>',
       `<div class="card reveal" id="export-card" hidden>
           <h2>Your data</h2>
@@ -62,12 +63,15 @@ const PATCHES = {
 const LIB_PATCHES = {
   guide: [
     ["\n  ['/consult', 'Consult — book a priest (kundli matching, personal questions)'],", ''],
-    ['; kundli matching is done on the Consult page.', '.'],
+    ["\n  ['/compatibility', 'Match — kundli matching with another person: their birth details, guna milan out of 36, Mangal dosha for both'],", ''],
+    ['; for kundli matching, send them to the Match page (/compatibility).', '.'],
   ],
   intent: [
     [' If it helps to talk to a person here, the Consult page can book a conversation, but please do not wait for that if you are not safe.', ''],
     ['a priest on the Consult page can sit with you in a real conversation.', 'please talk to someone you trust.'],
-    [' Kundli matching is something the priests on the Consult page do. In the meantime I can read', ' I can read'],
+    // The Match page isn't in the Artifact either.
+    ['Kundli matching is on the Match page: add their birth details there for the guna milan out of 36 and Mangal dosha for you both. Here I read only your own chart,', 'I can only read your own chart here,'],
+    ["offer: 'match' }", 'offer: null }'],
   ],
 };
 

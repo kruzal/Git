@@ -47,6 +47,7 @@ const Vidhya = (() => {
             ${link('dasha', 'Dasha')}
             ${link('panchang', 'Panchang')}
             ${link('discover', 'Discover')}
+            ${link('compatibility', 'Match')}
             ${link('consult', 'Consult')}
             ${link('account', 'Account')}
             <a href="#" id="logout-link">Log out</a>` : ''}

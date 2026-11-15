@@ -29,6 +29,7 @@ const Significators = require('./lib/significators');
 const Discover = require('./lib/discover');
 const Anthropic = require('@anthropic-ai/sdk');
 const Guide = require('./lib/guide');
+const Compatibility = require('./lib/compatibility');
 
 const app = express();
 const PORT = process.env.PORT || 3100;
@@ -206,6 +207,19 @@ app.put('/api/profile', requireUser, (req, res) => {
     .run(req.user.id, fullName.trim(), nwaranName?.trim() || null, birthDate, birthTime, city,
       currentCity && currentCity !== city ? currentCity : null);
   res.json({ ok: true, next: '/kundli' });
+});
+
+// ---------- compatibility: your chart against another person's ----------
+// Their details are used for this answer only and never stored.
+app.post('/api/compatibility', requireUser, requireProfile, (req, res) => {
+  const { name, birthDate, birthTime, city, role } = req.body || {};
+  if (!CITIES.some((c) => c.name === city) || !/^\d{4}-\d{2}-\d{2}$/.test(birthDate || '') || !/^\d{2}:\d{2}$/.test(birthTime || '')) {
+    return res.status(400).json({ error: 'Enter their birth date, birth time and birth place.' });
+  }
+  if (!['groom', 'bride'].includes(role)) return res.status(400).json({ error: 'Choose whether you are the groom or the bride in this match.' });
+  const mine = chartFor(req.profile).chart, theirs = chartFor({ birth_date: birthDate, birth_time: birthTime, city }).chart;
+  const result = role === 'groom' ? Compatibility.match(mine, theirs) : Compatibility.match(theirs, mine);
+  res.json({ ...result, role, names: { you: req.profile.full_name, them: String(name || '').trim().slice(0, 80) || 'Them' } });
 });
 
 // ---------- personal chart, readings, dasha ----------
@@ -672,7 +686,8 @@ app.post('/api/guide', requireUser, requireProfile, async (req, res) => {
   const b = Intent.boundary(question);
   if (b) {
     log('guide-boundary', { boundary: b.id });
-    return res.json({ text: b.message, links: b.offer === 'consult' ? [{ href: '/consult', label: 'Talk to a priest' }] : [], boundary: b.id });
+    const links = { consult: [{ href: '/consult', label: 'Talk to a priest' }], match: [{ href: '/compatibility', label: 'Open Match' }] }[b.offer] || [];
+    return res.json({ text: b.message, links, boundary: b.id });
   }
   if (!guideAllowance(req.user.id, today)) {
     return res.status(429).json({ error: `You have used today's ${GUIDE_DAILY_LIMIT} questions. The guide resets tomorrow; My space still answers in the meantime.` });

@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vidhya — Match</title>
+  <script>(function(){var t;try{t=localStorage.getItem('vidhya-theme')}catch(e){}document.documentElement.dataset.theme=t||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')})()</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header class="site-header"></header>
+  <main>
+    <section class="hero">
+      <p class="eyebrow">Kundli matching</p>
+      <h1>Match two charts</h1>
+      <p class="muted">Guna milan reads both Moons across eight kootas, out of 36, and checks Mangal dosha for you both. Their details are used for this answer only and are not saved.</p>
+    </section>
+
+    <form class="card" id="match-form" style="max-width:680px;margin-bottom:28px">
+      <h2>Their birth details</h2>
+      <div class="field">
+        <label for="name">Their name <span class="muted">(optional)</span></label>
+        <input id="name" name="name" maxlength="80" autocomplete="off">
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="birthDate">Date of birth</label>
+          <input id="birthDate" name="birthDate" type="date" required>
+        </div>
+        <div class="field">
+          <label for="birthTime">Time of birth</label>
+          <input id="birthTime" name="birthTime" type="time" required>
+          <span class="hint">As close as they know it</span>
+        </div>
+      </div>
+      <div class="field">
+        <label for="city">Place of birth</label>
+        <select id="city" name="city" required></select>
+      </div>
+      <div class="field">
+        <label id="role-label">In this match, you are the</label>
+        <div class="segmented" role="group" aria-labelledby="role-label" id="role">
+          <button type="button" aria-pressed="false" data-role="groom">Groom</button>
+          <button type="button" aria-pressed="false" data-role="bride">Bride</button>
+        </div>
+        <span class="hint">Tradition reads the match as groom and bride, and four of the eight kootas depend on which is which.</span>
+      </div>
+      <p class="error" id="error" role="alert"></p>
+      <button class="btn" type="submit">Match our charts</button>
+    </form>
+
+    <div id="result"></div>
+  </main>
+  <script src="/js/app.js"></script>
+  <script>
+    (async () => {
+      const me = await Vidhya.init();
+      if (!me) return;
+      const $ = (id) => document.getElementById(id);
+      const e = Vidhya.escapeHtml;
+      const form = $('match-form');
+      const cities = await Vidhya.api('/api/cities');
+      form.city.innerHTML = cities.map((c) => `<option value="${e(c.name)}">${e(c.name)}, ${e(c.country)}</option>`).join('');
+      form.city.value = 'Kathmandu';
+
+      let role = null;
+      $('role').addEventListener('click', (ev) => {
+        const b = ev.target.closest('[data-role]');
+        if (!b) return;
+        role = b.dataset.role;
+        $('role').querySelectorAll('[data-role]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+      });
+
+      const pts = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+      function render(r) {
+        const you = r.role, them = you === 'groom' ? 'bride' : 'groom';
+        const youName = e(r.names.you), themName = e(r.names.them);
+        const mars = (m) => (m.lagna ? `Manglik: Mars in house ${m.fromLagna} from the ascendant${m.softened ? `, but in ${e(m.sign)}, its own or exaltation sign, which tradition holds to cancel it` : ''}`
+          : m.moon ? `Mildly Manglik: Mars in house ${m.fromMoon} from the Moon only` : 'Not Manglik');
+        $('result').innerHTML = `
+          <div class="split">
+            <div class="card">
+              <p class="eyebrow">Guna milan</p>
+              <h2 style="margin:0">${pts(r.total)} <span class="muted" style="font-size:1rem">of ${r.max}</span></h2>
+              <p class="chip gold" style="margin-top:10px">${e(r.verdict)}</p>
+              <p class="hint">18 or more is the traditional bar for a match; 25 and up is very good.</p>
+            </div>
+            <aside class="preview-pane">
+              <div class="card">
+                <p class="eyebrow">The two Moons</p>
+                <ul class="fact-list">
+                  <li><span>${youName} (you)</span><strong>${e(r.moons[you].sign)} · ${e(r.moons[you].nakshatra)} pada ${r.moons[you].pada}</strong></li>
+                  <li><span>${themName}</span><strong>${e(r.moons[them].sign)} · ${e(r.moons[them].nakshatra)} pada ${r.moons[them].pada}</strong></li>
+                </ul>
+              </div>
+            </aside>
+          </div>
+
+          <div class="card" style="margin-top:20px">
+            <h2>The eight kootas</h2>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Koota</th><th>${youName}</th><th>${themName}</th><th>Points</th></tr></thead>
+                <tbody>${r.kootas.map((k) => `
+                  <tr>
+                    <td><strong>${e(k.name)}</strong><span class="hint">${e(k.about)}</span>${k.note ? `<span class="hint">${e(k.note)}</span>` : ''}</td>
+                    <td>${e(k[you])}</td><td>${e(k[them])}</td>
+                    <td><strong>${pts(k.score)}</strong> / ${k.max}</td>
+                  </tr>`).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          ${r.doshas.length ? `<div class="card" style="margin-top:20px">
+            <h2>Doshas</h2>
+            <ul class="fact-list">${r.doshas.map((d) => `<li><span>${e(d.name)}${d.cancelled ? ' · cancelled' : ''}</span><strong style="font-weight:400;text-align:left">${e(d.note)}</strong></li>`).join('')}</ul>
+          </div>` : ''}
+
+          <div class="card" style="margin-top:20px">
+            <h2>Mangal dosha</h2>
+            <ul class="fact-list">
+              <li><span>${youName} (you)</span><strong>${mars(r.manglik[you])}</strong></li>
+              <li><span>${themName}</span><strong>${mars(r.manglik[them])}</strong></li>
+            </ul>
+            <p class="muted" style="margin-top:12px">${e(r.manglik.summary)}</p>
+          </div>
+          <p class="hint" style="margin-top:16px">Guna milan reads the Moons only, and scoring tables differ a little between traditions. It is a starting point for reflection, not a verdict on two people.</p>`;
+        $('result').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+
+      form.addEventListener('submit', async (ev) => {
+        ev.preventDefault();
+        $('error').textContent = '';
+        if (!role) { $('error').textContent = 'Choose whether you are the groom or the bride.'; return; }
+        try {
+          render(await Vidhya.api('/api/compatibility', {
+            method: 'POST',
+            body: { name: form.name.value, birthDate: form.birthDate.value, birthTime: form.birthTime.value, city: form.city.value, role },
+          }));
+        } catch (err) {
+          $('error').textContent = err.message;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
